@@ -27,6 +27,8 @@
 | API-14 | 내 그룹 목록 | RPC `get_my_groups` | DB-003, 005 |
 | API-15 | 그룹 나가기 | RPC `leave_group` | DB-005 |
 | API-16 | 카테고리 목록 | SELECT `categories` | DB-004 |
+| API-17 | 로그인 / 게스트 시작 | Supabase Auth SDK (`signInWithOAuth`, `signInAnonymously`) | DB-001 |
+| API-18 | 게스트 → 소셜 계정 연결 | Supabase Auth SDK (`linkIdentity`) | DB-001 |
 
 ## 2. 상세
 
