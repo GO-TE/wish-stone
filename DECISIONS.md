@@ -7,7 +7,7 @@
 | D-001 | 2026-11-03 | AR을 MVP에 포함 | 확정 | 사용자 |
 | D-002 | 2026-11-03 | 모바일 + 웹 단일 코드베이스 (Expo + RN Web) | 확정 | AI 제안 → 사용자 위임 |
 | D-003 | 2026-11-03 | AR은 플랫폼별 구현체 3개를 인터페이스 뒤에 둠 | 확정 | AI 제안 |
-| D-004 | 2026-11-03 | 백엔드 Supabase | 확정 | AI 제안 |
+| D-004 | 2026-11-03 | 백엔드 Supabase | 폐기 (D-013으로 대체) | AI 제안 |
 | D-005 | 2026-11-03 | 응원은 카운트만 저장, 연출용 돌은 저장 안 함 | 확정 | 사용자 |
 | D-006 | 2026-11-03 | 응원 수는 본인만, 타인에게는 0~3단계로 공개 | 확정 | AI 제안 → 사용자 승인 |
 | D-007 | 2026-11-03 | 로그인: Apple / Kakao / Google / 게스트 | 확정 | 사용자 |
@@ -16,6 +16,7 @@
 | D-010 | 2026-11-03 | 물리 결과 pose 저장 방식 | 확정 | AI 제안 |
 | D-011 | 2026-11-03 | 객체지향 계층 구조 (포트/어댑터) | 확정 | 사용자 요청 |
 | D-012 | 2026-11-03 | 이루어짐 연출: 랜덤 기본 + 사용자 선택 | 확정 | 사용자 |
+| D-013 | 2026-11-04 | 백엔드 Spring Boot MSA + Kafka + Redis + DB 분리로 전환 | 확정 | 사용자 |
 
 ---
 
@@ -65,6 +66,20 @@
 - **결정:** presentation → application(유스케이스) → domain(엔티티, 값 객체, 포트) ← infrastructure(어댑터). 의존성은 `container.ts`에서 주입한다. 플랫폼 분기는 `PlatformCapabilities`와 `ARSessionFactory`에서만 한다. 연출은 `EffectBus`(옵저버)로 분리한다.
 - **상세:** `dash_board/아키텍처 설계.md`
 
-## D-012 이루어짐 연출
-- **결정:** 기본값은 꽃/새싹/이끼 중 서버가 랜덤으로 정하고, 사용자가 직접 고를 수도 있다(`fulfill_wish(bloom_type)`).
+## D-12 이루어짐 연출
+- **결정:** 기본값은 꽃/새싹/이끼 중 서버가 랜덤으로 정하고, 사용자가 직접 고를 수도 있다.
+
+## D-013 백엔드 Spring Boot MSA + Kafka + Redis + DB 분리로 전환 (D-004 대체)
+- **배경:** 사용자의 핵심 목표 중 하나가 `dash_board/MSA.md`에 정리된 **Spring Boot 기반 MSA(API Gateway, OpenFeign, Resilience4j Circuit Breaker, JWT, Kafka 비동기 이벤트, Database-per-Service, Docker)**를 직접 학습하고 구축하는 것이었다.
+- **결정:**
+  1. **API Gateway (`:8080`):** Spring Cloud Gateway에서 JWT를 검증하고 `X-User-Id`를 하위 서비스에 전달한다.
+  2. **마이크로서비스 4종 분리:**
+     - `user-auth-service` (`:8081`, `user_db`): 소셜(Apple/Kakao/Google)·게스트 로그인, 계정 연결(`link`), 닉네임 관리
+     - `wish-tower-service` (`:8082`, `wish_db` + `Redis`): 소원(돌) 생명주기, 3D pose 저장, 돌탑 조회, Redis 기반 통계(`tower:stats:*`) 및 랜덤 풀(`wish:random:pool`)
+     - `interaction-service` (`:8083`, `interaction_db`): 응원(`cheers`) 1인 1회 중복 차단 및 신고(`reports`) 누적 관리
+     - `group-service` (`:8084`, `group_db`): 지인 그룹 생성, 초대 코드 발급·참여, 그룹원 권한 검증
+  3. **동기(OpenFeign + Circuit Breaker) vs 비동기(Kafka) 기준 적용:**
+     - **즉시 결과가 필요한 작업:** 그룹 돌탑 조회 시 그룹원 권한 확인(`group-service`), 작성자 닉네임 배치 조회(`user-auth-service`, 장애 시 Resilience4j 폴백으로 `"익명의 그룹원"` 반환)
+     - **최종 일관성으로 충분한 작업:** 응원 시 카운트 반영(`WISH_CHEERED`), 신고 5회 누적 시 자동 숨김(`WISH_REPORT_THRESHOLD_REACHED`), 그룹 돌 개수 증감(`WISH_CREATED`/`WISH_DELETED`)은 Kafka 토픽(`interaction.events`, `wish.events`)으로 처리한다.
+- **결과:** 클라이언트는 포트/어댑터 구조(D-011) 덕분에 도메인·유스케이스 수정 없이 `src/infrastructure/api/` 및 `auth/` 어댑터(`MsaWishRepository`, `MsaTowerRepository`, `MsaGroupRepository`, `MsaAuthService`)만 추가해 게이트웨이(`:8080`)와 연결했다.
 

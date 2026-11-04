@@ -1,10 +1,24 @@
 # TASKS
 
-> 최종 갱신: 2026-11-03 / 현재 단계: 설계 (코드 미착수)
+> 최종 갱신: 2026-11-04 / 현재 단계: 코어 도메인·AR 추상화 및 DB 스키마 구현 착수
 > 상태: ✅ 완료 · 🔄 진행 중 · ⏳ 대기 · ❓ 결정 필요
 
-## 1. 완료 (2026-11-03 세션)
+## 1. 완료
 
+### 2026-11-04 세션
+- ✅ **백엔드 아키텍처를 Supabase에서 Spring Boot MSA + Kafka + Redis + DB 분리로 전면 전환 (D-013):**
+  - `dash_board/기술 스택.md`, `데이터 모델.md`, `API 명세서.md`, `아키텍처 설계.md`, `DECISIONS.md` MSA 기준으로 개편
+- ✅ **클라이언트 코어 및 MSA 게이트웨이 어댑터 구현 (`src/`):**
+  - 도메인 계층(`src/domain/`), 유스케이스(`src/application/`), AR 3중 어댑터(`src/infrastructure/ar/`), 물리(`SimpleTowerPhysicsWorld`)
+  - Spring Cloud Gateway(`:8080`) 연동 어댑터(`MsaHttpClient`, `MsaWishRepository`, `MsaTowerRepository`, `MsaGroupRepository`, `MsaAuthService`), `DashboardController`
+  - 단위·통합 테스트 6건 작성 및 통과 (`node --test src/__tests__/domain-and-ar.test.ts` → **pass 6, fail 0**)
+- ✅ **Spring Boot MSA 백엔드 멀티모듈 및 인프라 구축 (`backend/`):**
+  - `backend/docker-compose.yml` (MySQL 8.0 + Redis 7 + Apache Kafka KRaft 모드)
+  - `backend/sql/init-databases.sql` (`user_db`, `wish_db`, `interaction_db`, `group_db` 4개 DB 분리 초기화)
+  - 멀티모듈 Gradle 설정 및 핵심 패턴 구현 (`gateway-service` 라우팅, `UserAuthFeignClient` + Resilience4j `@CircuitBreaker` 폴백, `CheerCommandService` Kafka 이벤트 발행, `InteractionEventConsumer` 멱등성 컨슈머)
+- ✅ 프론트엔드 프로젝트 설정 파일 생성 (`package.json`, `tsconfig.json`, `app.json`)
+
+### 2026-11-03 세션
 - ✅ PRD v1.0 수정: AR을 MVP에 포함하고, 향후 확장에서 "AR 돌탑" 삭제
 - ✅ 요구 사항 정의서 작성: DB-001~030 (기능 22, 비기능 8)
 - ✅ 기술 스택 결정서 작성 (`dash_board/기술 스택.md`)
@@ -14,21 +28,17 @@
 - ✅ 객체지향 아키텍처 설계 작성 (`dash_board/아키텍처 설계.md`)
 - ✅ 루트 문서 정비: PROJECT_CONTEXT / TASKS / DECISIONS (저장소 루트로 이동)
 - ✅ 커밋·푸시 (origin/main)
-- 테스트: 해당 없음(문서 작업만 함, 코드 변경 없음)
 
 ## 2. 다음 작업 (우선순위 순)
 
-1. ⏳ **AR PoC 3종** (`기술 스택.md` 5장)
-   - Expo Dev Build + ViroReact: 바닥 인식 → glb 돌 드래그 → 물리 안착 → 스크린샷
-   - Android Chrome + `@react-three/xr`: hit-test 배치 + 캡처
-   - iOS Safari 간이 AR: 카메라 + R3F 오버레이 프레임 성능
-   - 돌 500개 instancing을 저사양 Android에서 측정
-   - PoC 결과에 따라 D-003을 유지하거나 수정
-2. ⏳ Expo 프로젝트 초기 세팅: `아키텍처 설계.md` 2장의 폴더 구조, TypeScript, expo-router
-3. ⏳ Supabase 스키마 SQL, RLS, RPC 작성 (`데이터 모델.md`, `API 명세서.md` 기준)
-4. ⏳ 인증 구현: Apple / Kakao / Google / 게스트 + 게스트 계정 연결
-5. ⏳ domain 계층(엔티티·값 객체)과 단위 테스트부터 구현
-6. ⏳ 디자인: 돌 3D 모델(glb), 컬러, 연출(응원 불꽃, 피어남) 시안
+1. ⏳ **Spring Boot MSA 각 서비스 JPA 엔티티·컨트롤러 상세 구현 (`backend/`):**
+   - `user-auth-service` (`:8081`): JWT 발급/검증, OAuth2/게스트 로그인, `/internal/users/nicknames`
+   - `wish-tower-service` (`:8082`): 돌탑 조회(`GET /api/v1/towers/{key}`), 소원 생성, Redis `tower:stats` & `SRANDMEMBER` 랜덤 풀 연동
+   - `interaction-service` (`:8083`): 응원/신고 REST 컨트롤러 및 JPA 리포지토리 연결
+   - `group-service` (`:8084`): 그룹 생성·초대 코드 참여 및 `/internal/groups/{id}/members/{userId}/exists`
+2. ⏳ **클라이언트 Expo 화면(`src/app/`) 및 3D/AR 뷰(`src/presentation/`) 구현:**
+   - `npm install` 후 SCR-01~SCR-08(대시보드 3D 돌탑 캔버스, 랜덤 소원 카드, AR 쌓기 화면) 연결
+3. ⏳ **로컬 Docker Compose(`mysql`, `redis`, `kafka`) 구동 및 End-to-End 연동 테스트**
 
 ## 3. 결정 필요 (사용자에게 물어볼 것)
 
