@@ -5,6 +5,17 @@
 
 ## 1. 완료
 
+### 2026-11-05 세션 (Sprint 1: D-015~D-019 백엔드·프론트엔드 병렬 구현 및 검증)
+- ✅ **백엔드 (eature/backend 브랜치, worktree_backend):**
+  - user-auth-service: [UserAccountService](backend/user-auth-service/src/main/java/com/stonewish/userauth/service/UserAccountService.java) 배틀태그(제미나이#real / 4자리 자동 태그) 복합 유니크 및 게스트→소셜 연동 구현 + JUnit 5 테스트 4건 통과
+  - wish-tower-service: [CategoryAutoClassifier](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/CategoryAutoClassifier.java) 자동 분류 + 사후 수정, [DailyWishQuotaService](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/DailyWishQuotaService.java) 일일 5개 무료 + 광고/결제 보너스 쿼터, [WishCommandService](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/WishCommandService.java) 구현 + JUnit 5 테스트 3건 통과
+  - interaction-service: [CheerCommandService](backend/interaction-service/src/main/java/com/stonewish/interaction/service/CheerCommandService.java) 초기 응원 빛 구간(1/5/15) 완화 및 동적 임계치 주입 적용 + JUnit 5 테스트 4건 통과
+  - 전체 멀티모듈 Gradle 빌드 및 단위 테스트 통과 (gradle test → **BUILD SUCCESSFUL**)
+- ✅ **프론트엔드 (eature/frontend 브랜치, worktree_frontend):**
+  - Nickname(닉네임#태그), CategoryAutoClassifier, DailyWishQuota, CheerLevel(1/5/15), EffectBus(	ower_collapsed 돌탑 무너짐 물리 연출), MsaWishRepository.updateCategory 구현
+  - 단위·통합 테스트 6건 전체 통과 (
+ode --test → **pass 6, fail 0**)
+
 ### 2026-11-04 세션
 - ✅ **멀티 에이전트 협업 체계 전환 및 Git Worktree 환경 구축 완료 (M1~M3):**
   - 4개 역할(Manager, Frontend, Backend 사수/시니어 멘토, QA) 협업 구조 및 커뮤니케이션 가이드라인(`AGENT_COLLABORATION_GUIDELINES.md`, `MULTI_AGENT_TRANSITION_PLAN.md`) 수립
