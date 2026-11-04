@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "StoneWish",
+    "slug": "stonewish",
+    "version": "0.1.0",
+    "scheme": "stonewish",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-router"]
+  }
+}
