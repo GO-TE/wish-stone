@@ -17,6 +17,7 @@
 | D-011 | 2026-11-03 | 객체지향 계층 구조 (포트/어댑터) | 확정 | 사용자 요청 |
 | D-012 | 2026-11-03 | 이루어짐 연출: 랜덤 기본 + 사용자 선택 | 확정 | 사용자 |
 | D-013 | 2026-11-04 | 백엔드 Spring Boot MSA + Kafka + Redis + DB 분리로 전환 | 확정 | 사용자 |
+| D-014 | 2026-11-04 | 4개 에이전트 협업 체계 및 Git Worktree 브랜치 격리 구조 도입 | 확정 | 사용자 요청 + AI |
 
 ---
 
@@ -82,4 +83,13 @@
      - **즉시 결과가 필요한 작업:** 그룹 돌탑 조회 시 그룹원 권한 확인(`group-service`), 작성자 닉네임 배치 조회(`user-auth-service`, 장애 시 Resilience4j 폴백으로 `"익명의 그룹원"` 반환)
      - **최종 일관성으로 충분한 작업:** 응원 시 카운트 반영(`WISH_CHEERED`), 신고 5회 누적 시 자동 숨김(`WISH_REPORT_THRESHOLD_REACHED`), 그룹 돌 개수 증감(`WISH_CREATED`/`WISH_DELETED`)은 Kafka 토픽(`interaction.events`, `wish.events`)으로 처리한다.
 - **결과:** 클라이언트는 포트/어댑터 구조(D-011) 덕분에 도메인·유스케이스 수정 없이 `src/infrastructure/api/` 및 `auth/` 어댑터(`MsaWishRepository`, `MsaTowerRepository`, `MsaGroupRepository`, `MsaAuthService`)만 추가해 게이트웨이(`:8080`)와 연결했다.
+ 
+## D-014 4개 에이전트 협업 체계 및 Git Worktree 브랜치 격리 구조 도입
+- **배경:** 단일 에이전트 개발 방식에서 탈피하여 1. Manager(전체 관리/조율), 2. Frontend(클라이언트 도메인/AR), 3. Backend(사수/시니어 멘토 역할), 4. QA(통합 검증) 4개 역할의 전문화된 멀티 에이전트 협업 체계로 전환.
+- **결정:**
+  1. 기존 `main` 브랜치는 직접 수정하지 않고 모든 커밋 히스토리를 100% 온전히 보존한다.
+  2. `feature/frontend`와 `feature/backend` 브랜치를 생성하고 Git Worktree(`worktree_frontend`, `worktree_backend`)로 작업 디렉터리를 물리적으로 격리하여 파일 잠금 및 변경 간섭을 원천 방지한다.
+  3. 백엔드 에이전트는 주니어(사용자)의 사수/멘토로서 아키텍처 의도와 실무 포인트를 명확히 설명하며 진행한다.
+  4. 로컬 변경사항을 즉시 커밋 후 GitHub 원격 저장소(`origin`)에 푸시하여 실시간 투명성을 보장한다.
+- **결과:** 독립적인 병렬 개발 환경 확보 및 충돌 없는 안정적인 형상 관리 달성.
 

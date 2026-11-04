@@ -21,14 +21,19 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
         }
     }
 
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
+            mavenBom("org.springframework.boot:spring-boot-dependencies:3.3.5")
             mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
         }
+    }
+
+    dependencies {
+        testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     }
 
     tasks.withType<Test> {
