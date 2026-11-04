@@ -1,17 +1,17 @@
 package com.stonewish.interaction.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.stonewish.events.StoneWishEvents;
+import com.stonewish.interaction.service.CheerCommandService.CheerThresholds;
+import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.clients.producer.Producer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.SendResult;
-
-import java.util.concurrent.CompletableFuture;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CheerCommandServiceTest {
 
@@ -64,10 +64,10 @@ class CheerCommandServiceTest {
     }
 
     @Test
-    @DisplayName("응원 성공 시 1인 1회 영속화 및 Kafka 이벤트 비동기 발행 검증")
-    void cheerWish_success() {
+    @DisplayName("D-017: 초기 단계(1/5/15)에서 첫 응원(0 -> 1) 성공 시 즉시 1단계 빛 상승(levelUp=true) 및 Kafka 이벤트가 발행된다")
+    void cheerWish_initialStageFirstCheerLevelUp() {
         FakePersistencePort persistencePort = new FakePersistencePort();
-        persistencePort.summary = new CheerCommandService.WishSummary("wish-101", "author-1", 9);
+        persistencePort.summary = new CheerCommandService.WishSummary("wish-101", "author-1", 0);
         persistencePort.exists = false;
 
         FakeKafkaTemplate kafkaTemplate = new FakeKafkaTemplate();
@@ -115,14 +115,21 @@ class CheerCommandServiceTest {
     }
 
     @Test
-    @DisplayName("응원 수 기반 레벨 계산 로직 검증 (0: <10, 1: 10~49, 2: 50~99, 3: 100+)")
-    void calcCheerLevel_thresholds() {
+    @DisplayName("D-017: 초기 기본 구간(1/5/15) 및 실 유저 증가 후 동적 상향 구간(10/50/100) 모두 정확히 계산된다")
+    void calcCheerLevel_dynamicThresholds() {
+        // 1) 초기 허들 완화 기준 (1 / 5 / 15)
         assertThat(CheerCommandService.calcCheerLevel(0)).isEqualTo(0);
-        assertThat(CheerCommandService.calcCheerLevel(9)).isEqualTo(0);
-        assertThat(CheerCommandService.calcCheerLevel(10)).isEqualTo(1);
-        assertThat(CheerCommandService.calcCheerLevel(49)).isEqualTo(1);
-        assertThat(CheerCommandService.calcCheerLevel(50)).isEqualTo(2);
-        assertThat(CheerCommandService.calcCheerLevel(99)).isEqualTo(2);
-        assertThat(CheerCommandService.calcCheerLevel(100)).isEqualTo(3);
+        assertThat(CheerCommandService.calcCheerLevel(1)).isEqualTo(1);
+        assertThat(CheerCommandService.calcCheerLevel(4)).isEqualTo(1);
+        assertThat(CheerCommandService.calcCheerLevel(5)).isEqualTo(2);
+        assertThat(CheerCommandService.calcCheerLevel(14)).isEqualTo(2);
+        assertThat(CheerCommandService.calcCheerLevel(15)).isEqualTo(3);
+
+        // 2) 실 유저 증가 후 설정값 상향 시 (10 / 50 / 100)
+        CheerThresholds scaled = new CheerThresholds(10, 50, 100);
+        assertThat(CheerCommandService.calcCheerLevel(9, scaled)).isEqualTo(0);
+        assertThat(CheerCommandService.calcCheerLevel(10, scaled)).isEqualTo(1);
+        assertThat(CheerCommandService.calcCheerLevel(50, scaled)).isEqualTo(2);
+        assertThat(CheerCommandService.calcCheerLevel(100, scaled)).isEqualTo(3);
     }
 }
