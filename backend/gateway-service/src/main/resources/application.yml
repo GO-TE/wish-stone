@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+      routes:
+        # 1. 인증 및 회원 프로필 서비스 (:8081)
+        - id: user-auth-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v1/auth/**, /api/v1/users/**
+
+        # 2. 응원 및 신고 서비스 (:8083) - 더 구체적인 경로를 먼저 매칭
+        - id: interaction-service
+          uri: http://localhost:8083
+          predicates:
+            - Path=/api/v1/wishes/*/cheers, /api/v1/wishes/*/reports
+
+        # 3. 소원 및 돌탑 서비스 (:8082)
+        - id: wish-tower-service
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/v1/wishes/**, /api/v1/towers/**, /api/v1/categories/**
+
+        # 4. 지인 그룹 서비스 (:8084)
+        - id: group-service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/v1/groups/**
