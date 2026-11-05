@@ -68,6 +68,14 @@ export class MsaWishRepository implements WishRepository {
     return res.id;
   }
 
+  async updateCategory(id: WishId, category: CategoryCode): Promise<void> {
+    await this.http.request(
+      'PATCH',
+      `/api/v1/wishes/${encodeURIComponent(id)}/category`,
+      { categoryCode: category }
+    );
+  }
+
   async random(
     count: number,
     excludeIds: readonly WishId[]
