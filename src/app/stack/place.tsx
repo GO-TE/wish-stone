@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Tower } from '../../domain/entities/Tower.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
 import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
-import { StackStoneController } from '../../presentation/controllers/StackStoneController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 
 /**
  * SCR-07 쌓기 (일반 3D) 화면 (`/stack/place`)
@@ -15,8 +15,10 @@ import { StackStoneController } from '../../presentation/controllers/StackStoneC
 export default function PlaceStone3DScreen() {
   const router = useRouter();
   const [controller] = useState(() => {
-    const c = new StackStoneController();
-    c.updateContent('소원이 이루어지기를 바랍니다');
+    const c = getSharedAppContainer().controllers.stackStone;
+    if (!c.getState().content) {
+      c.updateContent('소원이 이루어지기를 바랍니다');
+    }
     return c;
   });
   const [state, setState] = useState(() => controller.getState());

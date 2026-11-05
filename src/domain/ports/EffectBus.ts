@@ -42,6 +42,7 @@ export type EffectListener = (event: VisualEffectEvent) => void;
  */
 export class EffectBus {
   private readonly listeners = new Set<EffectListener>();
+  private readonly history: VisualEffectEvent[] = [];
 
   subscribe(listener: EffectListener): () => void {
     this.listeners.add(listener);
@@ -51,8 +52,15 @@ export class EffectBus {
   }
 
   emit(event: VisualEffectEvent): void {
+    this.history.push(event);
     for (const listener of this.listeners) {
       listener(event);
     }
   }
+
+  getHistory(): readonly VisualEffectEvent[] {
+    return this.history;
+  }
 }
+
+export class InMemoryEffectBus extends EffectBus {}

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type CategoryCode } from '../../domain/value-objects/TowerKey.ts';
-import { StackStoneController } from '../../presentation/controllers/StackStoneController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 
 const CATEGORIES: readonly { code: CategoryCode; label: string }[] = [
   { code: 'job', label: '#취업' },
@@ -27,7 +27,9 @@ const CATEGORIES: readonly { code: CategoryCode; label: string }[] = [
  */
 export default function WriteWishScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new StackStoneController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.stackStone
+  );
   const [state, setState] = useState(() => controller.getState());
 
   const handleContentChange = (text: string) => {

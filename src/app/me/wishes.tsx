@@ -10,8 +10,8 @@ import { useRouter } from 'expo-router';
 import { Wish } from '../../domain/entities/Wish.ts';
 import { type BloomType } from '../../domain/value-objects/BloomType.ts';
 import { type CategoryCode } from '../../domain/value-objects/TowerKey.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 import {
-  MyWishesController,
   type MyWishesFilter,
   type MyWishesViewState,
 } from '../../presentation/controllers/MyWishesController.ts';
@@ -45,7 +45,9 @@ const CATEGORY_OPTIONS: readonly { code: CategoryCode; label: string }[] = [
  */
 export default function MyWishesScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new MyWishesController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.myWishes
+  );
   const [state, setState] = useState<MyWishesViewState>(() =>
     controller.getState()
   );

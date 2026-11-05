@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { OnboardingController } from '../../presentation/controllers/OnboardingController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 
 /**
  * SCR-03 닉네임#태그 설정 화면 (`/onboarding/nickname`)
@@ -11,7 +11,9 @@ import { OnboardingController } from '../../presentation/controllers/OnboardingC
  */
 export default function NicknameOnboardingScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new OnboardingController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.onboarding
+  );
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
 

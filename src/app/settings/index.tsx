@@ -9,10 +9,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type AuthProvider } from '../../domain/ports/AuthService.ts';
-import {
-  SettingsController,
-  type SettingsViewState,
-} from '../../presentation/controllers/SettingsController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { type SettingsViewState } from '../../presentation/controllers/SettingsController.ts';
 
 const SOCIAL_PROVIDERS: readonly {
   provider: Exclude<AuthProvider, 'guest'>;
@@ -33,7 +31,11 @@ const SOCIAL_PROVIDERS: readonly {
  */
 export default function SettingsScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new SettingsController());
+  const [controller] = useState(() => {
+    const c = getSharedAppContainer().controllers.settings;
+    c.refreshProfile();
+    return c;
+  });
   const [state, setState] = useState<SettingsViewState>(() =>
     controller.getState()
   );

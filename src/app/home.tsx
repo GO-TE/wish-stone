@@ -5,10 +5,8 @@ import {
   type CategoryCode,
   TowerKey,
 } from '../domain/value-objects/TowerKey.ts';
-import {
-  DashboardController,
-  type DashboardViewState,
-} from '../presentation/controllers/DashboardController.ts';
+import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
+import { type DashboardViewState } from '../presentation/controllers/DashboardController.ts';
 
 const TOWER_TABS: readonly { label: string; key: TowerKey }[] = [
   { label: '전체', key: TowerKey.global() },
@@ -34,7 +32,9 @@ const CATEGORY_LABELS: Record<CategoryCode, string> = {
  */
 export default function HomeScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new DashboardController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.dashboard
+  );
   const [state, setState] = useState<DashboardViewState>(() =>
     controller.getState()
   );
