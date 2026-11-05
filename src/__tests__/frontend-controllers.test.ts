@@ -529,3 +529,123 @@ test('Unit 5 SettingsController (SCR-17 ~ SCR-18): 배틀태그(닉네임#태그
   assert.equal(afterWithdraw.user, null);
   assert.equal(afterWithdraw.withdrawModalOpen, false);
 });
+
+test('QA Contract Defensive Fixes (M-02, M-04, M-06, M-08): 서버 발급 tag 우선 적용, pose 누락 시 Pose.identity() 폴백, 대문자 status 소문자 정규화, isMine 기본값 검증', async () => {
+  const qaFetch = async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    if (method === 'PUT' && url.endsWith('/api/v1/users/me/nickname')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'user-qa',
+          nickname: '돌탑지기',
+          tag: '4821',
+          isGuest: false,
+        }),
+      };
+    }
+    if (url.includes('/api/v1/wishes/me')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            id: 'qa-wish-me',
+            content: '내 소원 방어적 매핑 테스트',
+            categoryCode: 'job',
+            groupId: null,
+            stoneShape: 'round',
+            stoneColor: '#A89F91',
+            pose: null, // pose 누락 -> Pose.identity() 폴백
+            status: 'FULFILLED', // 대문자 -> 'fulfilled' 정규화
+            bloomType: 'flower',
+            cheerLevel: 2,
+            cheerCount: 6,
+            // isMine 누락 -> /me 이므로 true 기본값
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+    if (url.includes('/api/v1/wishes/random')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            id: 'qa-wish-random',
+            content: '랜덤 소원 방어적 매핑 테스트',
+            categoryCode: 'health',
+            groupId: null,
+            stoneShape: 'pebble',
+            stoneColor: '#D6C7B2',
+            // pose 및 isMine 누락 -> Pose.identity(), false 기본값
+            status: 'ACTIVE',
+            bloomType: null,
+            cheerLevel: 1,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+    if (url.includes('/api/v1/towers/global/stats')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          stoneCount: 1,
+          todayCount: 1,
+          fulfilledCount: 1,
+          cheerCount: 2,
+        }),
+      };
+    }
+    if (url.includes('/api/v1/towers/global')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          towerKey: 'global',
+          stones: [
+            {
+              id: 'qa-tower-stone',
+              stoneShape: 'round',
+              stoneColor: '#A89F91',
+              pose: null,
+              status: 'ACTIVE',
+              bloomType: null,
+              cheerLevel: 1,
+              nickname: null,
+            },
+          ],
+          hasMore: false,
+        }),
+      };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+
+  const container = createMsaAppContainer('http://localhost:8080', qaFetch);
+  const onboarding = new OnboardingController(container.auth);
+
+  // M-06: 클라이언트가 태그 없이('돌탑지기' -> 임시 #0000) 보냈을 때 서버가 발급한 res.tag('4821')로 덮어써야 함
+  const nickState = await onboarding.submitNickname('돌탑지기');
+  assert.equal(nickState.user?.nickname?.displayName, '돌탑지기#4821');
+
+  // M-04 / M-08: /me 조회 시 pose 누락 폴백, status 소문자 정규화, isMine=true 기본값
+  const myWishes = await container.repositories.wishes.mine();
+  assert.equal(myWishes[0].isMine, true);
+  assert.equal(myWishes[0].status, 'fulfilled');
+  assert.equal(myWishes[0].stone.pose.position.y, 0);
+
+  // /random 조회 시 isMine=false 기본값 및 status 소문자 정규화
+  const randomWishes = await container.repositories.wishes.random(1, []);
+  assert.equal(randomWishes[0].isMine, false);
+  assert.equal(randomWishes[0].status, 'active');
+
+  // M-02: MsaTowerRepository status 소문자 정규화
+  const tower = await container.repositories.towers.get(TowerKey.global());
+  assert.equal(tower.stones[0].status, 'active');
+  assert.equal(tower.stones[0].stone.pose.position.x, 0);
+});

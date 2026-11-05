@@ -41,6 +41,10 @@ export class Pose {
     return new Pose({ x: 0, y: 0, z: 0 }, { qx: 0, qy: 0, qz: 0, qw: 1 });
   }
 
+  static identity(): Pose {
+    return Pose.origin();
+  }
+
   /**
    * 3회 연속 물리 안착 실패 시 탑 꼭대기에 자동 배치할 위치 계산 (화면 설계서 SCR-08 4단계)
    */

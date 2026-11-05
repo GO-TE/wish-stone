@@ -12,6 +12,8 @@ interface AuthResponseDto {
   user: {
     id: string;
     nickname: string | null;
+    tag?: string | null;
+    displayName?: string | null;
     isGuest: boolean;
   };
 }
@@ -53,14 +55,18 @@ export class MsaAuthService implements AuthService {
     const res = await this.http.request<{
       id: string;
       nickname: string;
+      tag?: string | null;
+      displayName?: string | null;
       isGuest: boolean;
     }>('PUT', '/api/v1/users/me/nickname', {
       nickname: nickname.displayName,
     });
 
+    const rawNick = res.displayName ?? res.nickname;
+    const explicitTag = res.tag ?? (rawNick.includes('#') ? undefined : nickname.tag);
     const updated: UserProfile = {
       id: res.id,
-      nickname: new Nickname(res.nickname, nickname.tag),
+      nickname: new Nickname(rawNick, explicitTag),
       isGuest: res.isGuest,
     };
     this.currentProfile = updated;
@@ -84,9 +90,12 @@ export class MsaAuthService implements AuthService {
 
   private applySession(dto: AuthResponseDto): AuthSession {
     this.http.setAccessToken(dto.accessToken);
+    const rawNick = dto.user.displayName ?? dto.user.nickname;
     const profile: UserProfile = {
       id: dto.user.id,
-      nickname: dto.user.nickname ? new Nickname(dto.user.nickname) : null,
+      nickname: rawNick
+        ? new Nickname(rawNick, dto.user.tag ?? undefined)
+        : null,
       isGuest: dto.user.isGuest,
     };
     this.currentProfile = profile;

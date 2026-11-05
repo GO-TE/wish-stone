@@ -4,6 +4,7 @@ import {
   type TowerStats,
   type TowerStoneItem,
 } from '../../domain/entities/Tower.ts';
+import { type WishStatus } from '../../domain/entities/Wish.ts';
 import { type TowerRepository } from '../../domain/ports/repositories.ts';
 import { type BloomType } from '../../domain/value-objects/BloomType.ts';
 import { type CheerLevelValue } from '../../domain/value-objects/CheerLevel.ts';
@@ -15,11 +16,11 @@ interface TowerStoneDto {
   id: string;
   stoneShape: StoneShape;
   stoneColor: string;
-  pose: PoseJSON;
-  status: 'active' | 'fulfilled';
+  pose?: PoseJSON | null;
+  status: string;
   bloomType: BloomType | null;
   cheerLevel: CheerLevelValue;
-  isMine: boolean;
+  isMine?: boolean;
   nickname: string | null;
 }
 
@@ -53,19 +54,25 @@ export class MsaTowerRepository implements TowerRepository {
       ),
     ]);
 
-    const items: TowerStoneItem[] = towerDto.stones.map((s) => ({
-      id: s.id,
-      stone: new Stone({
-        shape: s.stoneShape,
-        color: s.stoneColor,
-        pose: Pose.fromJSON(s.pose),
-      }),
-      status: s.status,
-      bloom: s.bloomType,
-      cheerLevel: s.cheerLevel,
-      isMine: s.isMine,
-      nickname: s.nickname,
-    }));
+    const items: TowerStoneItem[] = towerDto.stones.map((s) => {
+      const normalizedStatus = (s.status ?? 'active').toLowerCase() as Extract<
+        WishStatus,
+        'active' | 'fulfilled'
+      >;
+      return {
+        id: s.id,
+        stone: new Stone({
+          shape: s.stoneShape ?? 'round',
+          color: s.stoneColor ?? '#A89F91',
+          pose: s.pose ? Pose.fromJSON(s.pose) : Pose.identity(),
+        }),
+        status: normalizedStatus,
+        bloom: s.bloomType,
+        cheerLevel: s.cheerLevel ?? 0,
+        isMine: s.isMine ?? false,
+        nickname: s.nickname,
+      };
+    });
 
     return new Tower(key, items, statsDto);
   }
