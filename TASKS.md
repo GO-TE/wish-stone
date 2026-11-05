@@ -5,7 +5,25 @@
 
 ## 1. 완료
 
+### 2026-11-05 세션 (Sprint 1: D-015~D-019 백엔드·프론트엔드 병렬 구현 및 검증)
+- ✅ **백엔드 (eature/backend 브랜치, worktree_backend):**
+  - user-auth-service: [UserAccountService](backend/user-auth-service/src/main/java/com/stonewish/userauth/service/UserAccountService.java) 배틀태그(제미나이#real / 4자리 자동 태그) 복합 유니크 및 게스트→소셜 연동 구현 + JUnit 5 테스트 4건 통과
+  - wish-tower-service: [CategoryAutoClassifier](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/CategoryAutoClassifier.java) 자동 분류 + 사후 수정, [DailyWishQuotaService](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/DailyWishQuotaService.java) 일일 5개 무료 + 광고/결제 보너스 쿼터, [WishCommandService](backend/wish-tower-service/src/main/java/com/stonewish/wishtower/service/WishCommandService.java) 구현 + JUnit 5 테스트 3건 통과
+  - interaction-service: [CheerCommandService](backend/interaction-service/src/main/java/com/stonewish/interaction/service/CheerCommandService.java) 초기 응원 빛 구간(1/5/15) 완화 및 동적 임계치 주입 적용 + JUnit 5 테스트 4건 통과
+  - 전체 멀티모듈 Gradle 빌드 및 단위 테스트 통과 (gradle test → **BUILD SUCCESSFUL**)
+- ✅ **프론트엔드 (eature/frontend 브랜치, worktree_frontend):**
+  - Nickname(닉네임#태그), CategoryAutoClassifier, DailyWishQuota, CheerLevel(1/5/15), EffectBus(	ower_collapsed 돌탑 무너짐 물리 연출), MsaWishRepository.updateCategory 구현
+  - 단위·통합 테스트 6건 전체 통과 (
+ode --test → **pass 6, fail 0**)
+
 ### 2026-11-04 세션
+- ✅ **멀티 에이전트 협업 체계 전환 및 Git Worktree 환경 구축 완료 (M1~M3):**
+  - 4개 역할(Manager, Frontend, Backend 사수/시니어 멘토, QA) 협업 구조 및 커뮤니케이션 가이드라인(`AGENT_COLLABORATION_GUIDELINES.md`, `MULTI_AGENT_TRANSITION_PLAN.md`) 수립
+  - 사수/시니어 멘토 백엔드 아키텍처 가이드(`BACKEND_SENIOR_MENTOR_GUIDE.md`) 작성
+  - Git 브랜치 분리(`feature/frontend`, `feature/backend`) 및 Git Worktree(`worktree_frontend`, `worktree_backend`) 구성 완료 (기존 main 100% 보존)
+  - 백엔드 Gradle 멀티모듈 누락 디렉터리(`user-auth-service`, `group-service`) 스캐폴딩 및 빌드/테스트 전건 정렬 (`BUILD SUCCESSFUL`, 단위 테스트 통과)
+  - 프론트엔드 도메인·AR 단위 테스트 6건 통과 검증 (`node --test`, pass 6, fail 0)
+  - GitHub 원격 저장소(`origin`) 브랜치 동기화 및 종합 검증 리포트(`TEST_READY.md`) 작성 완료
 - ✅ **백엔드 아키텍처를 Supabase에서 Spring Boot MSA + Kafka + Redis + DB 분리로 전면 전환 (D-013):**
   - `dash_board/기술 스택.md`, `데이터 모델.md`, `API 명세서.md`, `아키텍처 설계.md`, `DECISIONS.md` MSA 기준으로 개편
 - ✅ **클라이언트 코어 및 MSA 게이트웨이 어댑터 구현 (`src/`):**
@@ -40,21 +58,19 @@
    - `npm install` 후 SCR-01~SCR-08(대시보드 3D 돌탑 캔버스, 랜덤 소원 카드, AR 쌓기 화면) 연결
 3. ⏳ **로컬 Docker Compose(`mysql`, `redis`, `kafka`) 구동 및 End-to-End 연동 테스트**
 
-## 3. 결정 필요 (사용자에게 물어볼 것)
+## 3. 확정된 기획·정책 사항 (2026-11-05 사용자 검토 완료)
 
-| 우선순위 | 항목 | 관련 |
-| --- | --- | --- |
-| ❓ 중 | 게스트 기능 제한 여부 (예: 그룹 생성 불가) | DB-001, D-007 |
-| ❓ 중 | 닉네임 중복 허용 여부 | DB-001 |
-| ❓ 중 | 소원 최대 글자 수, 금칙어 정책, 자동 필터와 수동 검수 중 선택 | DB-009, 030 |
-| ❓ 중 | 카테고리 목록 (초안: 취업, 학업, 건강, 관계, 기타) | DB-004 |
-| ❓ 중 | 자동 숨김 신고 횟수 (초안 5회) | DB-018 |
-| ❓ 중 | 그룹 최대 인원 | DB-005 |
-| ❓ 하 | 응원 단계 구간 (예: 10 / 50 / 100) | DB-017, D-006 |
-| ❓ 하 | 이루어짐 되돌리기, 삭제 시 돌탑에서 돌을 실제로 뺄지 | DB-020, 021 |
-| ❓ 하 | AR 사진 공유 시 소원 글 노출, 워터마크 (사용자: "나중에 천천히") | DB-013 |
-| ❓ 하 | 하루 소원 등록 한도 (초안 10회), 레이트 리밋 수치 | API 명세서 3장 |
-
+| 상태 | 항목 | 확정 내용 | 관련 |
+| --- | --- | --- | --- |
+| ✅ 확정 | 닉네임 + 태그 식별 | `닉네임#태그`(예: `제미나이#real`, 미입력 시 4자리 난수 자동 부여), `(nickname, tag)` 복합 유니크 | DB-001, D-015 |
+| ✅ 확정 | 게스트 기능 제한 | 공개 돌탑 작성·응원은 허용, 지인 그룹 생성·참여는 소셜 계정 연결(`link`) 후 가능 | DB-001, D-007 |
+| ✅ 확정 | 소원 글자 수 & 금칙어 | 최대 200자, 전화번호 제한은 해제하고 설정 분리된 욕설·도박 스팸 금칙어만 필터링 + 신고 5회 시 자동 숨김 | DB-009, 018, 030, D-019 |
+| ✅ 확정 | 카테고리 자동 분류 | 유저가 직접 고르지 않고 시스템이 본문 기반으로 자동 분류 후, 유저가 사후 수정 가능 (`PATCH /api/v1/wishes/{id}/category`) | DB-004, D-016 |
+| ✅ 확정 | 그룹 최대 인원 | 기본 50명, 추후 변경 가능하도록 `application.yml` 설정으로 분리 | DB-005 |
+| ✅ 확정 | 응원 빛 단계 구간 | 초기 허들 완화(`1 / 5 / 15`), 실 유저 증가 시 동적으로 상향 가능하도록 설정 분리 | DB-017, D-017 |
+| ✅ 확정 | 돌탑 무너짐 액션 | 돌 쌓기 실패 또는 내 소원 삭제 시 돌탑이 와르르 무너지는 물리 연출 재생, 이루어짐은 되돌리기 불가 | DB-020, 021, D-019 |
+| ✅ 확정 | 하루 소원 한도 & BM | 하루 기본 5개 무료 + 추후 광고 시청/결제 시 보너스 쿼터(`bonusQuota`) 충전 가능 구조 | API-05, D-018 |
+| ⏳ 보류 | AR 사진 공유 워터마크 | 추후 결정 ("나중에 천천히") | DB-013 |
 ## 4. 해결하지 못한 문제와 주의사항
 
 - ✅ **(해결됨) AI 터미널 도구 고장:** 원인은 사용자 PC의 PATH 오타(`C:\WINDOWSSystem32\...`)와 Git 경로 누락이었다. 사용자가 고친 뒤 정상 동작한다. 다른 PC에서도 `run_command`가 `powershell not found`로 실패하면 PATH에 `%SystemRoot%\System32\WindowsPowerShell\v1.0\`과 `C:\Program Files\Git\cmd`가 있는지 확인할 것.

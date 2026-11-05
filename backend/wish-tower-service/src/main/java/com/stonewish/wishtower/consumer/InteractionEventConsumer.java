@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class InteractionEventConsumer {
 
+    public static final String TOPIC_WISH_REPORT_EVENTS = "stonewish.wish.events";
+
     public interface WishEventProjectionHandler {
         boolean isAlreadyProcessed(String eventId);
         void markProcessed(String eventId, String eventType);
@@ -35,7 +37,7 @@ public class InteractionEventConsumer {
     )
     @Transactional
     public void onWishCheered(WishCheeredEvent event) {
-        if (projectionHandler.isAlreadyProcessed(event.eventId())) {
+        if (event == null || event.eventId() == null || projectionHandler.isAlreadyProcessed(event.eventId())) {
             return; // 멱등성(Idempotency) 보장: 중복 수신 이벤트 무시
         }
         projectionHandler.incrementCheerCountAndStats(event.wishId());
@@ -43,13 +45,13 @@ public class InteractionEventConsumer {
     }
 
     @KafkaListener(
-        topics = StoneWishEvents.TOPIC_INTERACTION_EVENTS,
+        topics = { StoneWishEvents.TOPIC_INTERACTION_EVENTS, TOPIC_WISH_REPORT_EVENTS },
         groupId = "wish-tower-service-report-group"
     )
     @Transactional
     public void onReportThresholdReached(WishReportThresholdReachedEvent event) {
-        if (projectionHandler.isAlreadyProcessed(event.eventId())) {
-            return;
+        if (event == null || event.eventId() == null || projectionHandler.isAlreadyProcessed(event.eventId())) {
+            return; // 멱등성(Idempotency) 보장: 동일 eventId 재수신 시 무시
         }
         projectionHandler.hideWishByReportThreshold(event.wishId());
         projectionHandler.markProcessed(event.eventId(), "WISH_REPORT_THRESHOLD_REACHED");
