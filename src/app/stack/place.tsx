@@ -43,9 +43,9 @@ export default function PlaceStone3DScreen() {
       {
         id: 'base-1',
         stone: new Stone({
-          shape: 'flat',
-          color: '#374151',
-          pose: new Pose({ x: 0, y: 0, z: 0 }),
+          shape: 'boulder',
+          color: '#3E4947',
+          pose: new Pose({ x: -0.15, y: 0, z: 0 }),
         }),
         status: 'active',
         bloom: null,
@@ -56,9 +56,9 @@ export default function PlaceStone3DScreen() {
       {
         id: 'base-2',
         stone: new Stone({
-          shape: 'round',
-          color: '#4B5563',
-          pose: new Pose({ x: 0.04, y: 0.22, z: 0 }),
+          shape: 'flat',
+          color: '#262930',
+          pose: new Pose({ x: 0.15, y: 0, z: 0 }),
         }),
         status: 'active',
         bloom: null,
@@ -69,9 +69,9 @@ export default function PlaceStone3DScreen() {
       {
         id: 'base-3',
         stone: new Stone({
-          shape: 'pebble',
-          color: '#6B7280',
-          pose: new Pose({ x: -0.03, y: 0.44, z: 0 }),
+          shape: 'round',
+          color: '#6E675F',
+          pose: new Pose({ x: 0, y: 0.35, z: 0 }),
         }),
         status: 'active',
         bloom: 'sprout',
@@ -146,7 +146,7 @@ export default function PlaceStone3DScreen() {
     })
   ).current;
 
-  const stoneColor = state.selectedStone?.color || '#8DA4C4';
+  const stoneColor = state.selectedStone?.color || '#5A6577';
 
   return (
     <View style={styles.container}>
@@ -166,16 +166,20 @@ export default function PlaceStone3DScreen() {
 
       {/* Main Drag & Drop Zone */}
       <View style={styles.canvasContainer}>
+        {/* Drop Target Zone */}
         <View style={styles.dropZone}>
           <Text style={styles.dropZoneTarget}>🎯</Text>
           <Text style={styles.dropZoneText}>여기에 돌을 놓아주세요</Text>
         </View>
 
+        {/* Stone Tower Canvas (컨트롤러 숨김 모드로 간결하게 탑만 표시) */}
         <StoneTowerCanvas
           stones={sampleTower.stones}
           collapsedShake={state.towerCollapsed}
+          showControls={false}
         />
 
+        {/* 인터랙티브 드래그 가능한 사용자 소원 돌 (깨진 이모지 제거, 자연석 비주얼) */}
         <View style={styles.dragTrackArea}>
           <Animated.View
             {...panResponder.panHandlers}
@@ -186,13 +190,14 @@ export default function PlaceStone3DScreen() {
                 transform: [{ translateX: pan.x }, { translateY: pan.y }],
                 borderColor: isDragging
                   ? TossTheme.colors.primary
-                  : 'rgba(255,255,255,0.4)',
+                  : 'rgba(255, 255, 255, 0.4)',
               },
             ]}
           >
-            <Text style={styles.stoneIcon}>🪨</Text>
-            <Text style={styles.stoneLabel}>
-              {isDragging ? '놓으면 투하!' : '드래그해서 올리기'}
+            <View style={styles.stoneSurfaceHighlight} />
+            <Text style={styles.stoneBadge}>내 소원 돌</Text>
+            <Text style={styles.stoneActionText}>
+              {isDragging ? '놓으면 투하!' : '손으로 위로 끌어올리기'}
             </Text>
           </Animated.View>
         </View>
@@ -240,7 +245,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   header: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   title: {
     ...TossTheme.typography.title,
@@ -273,17 +278,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TossTheme.colors.card,
     borderRadius: TossTheme.radius.card,
-    padding: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginVertical: 8,
+    marginVertical: 6,
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
   },
   dropZone: {
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
     borderRadius: TossTheme.radius.button,
     borderWidth: 1.5,
     borderStyle: 'dashed',
@@ -291,7 +297,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(49, 130, 246, 0.05)',
   },
   dropZoneTarget: {
-    fontSize: 22,
+    fontSize: 20,
     marginBottom: 2,
   },
   dropZoneText: {
@@ -302,34 +308,56 @@ const styles = StyleSheet.create({
   dragTrackArea: {
     width: '100%',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
   draggableStone: {
-    width: 140,
-    height: 64,
-    borderRadius: 32,
+    width: 154,
+    height: 68,
+    // 자연석 실루엣: 상단 큰 곡선, 하단 완만한 기초면 (알약/캡슐 방지)
+    borderTopLeftRadius: 42,
+    borderTopRightRadius: 36,
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 22,
     borderWidth: 2,
+    borderTopWidth: 3,
+    borderTopColor: 'rgba(255, 255, 255, 0.45)',
+    borderBottomWidth: 4,
+    borderBottomColor: 'rgba(0, 0, 0, 0.45)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.4,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 8,
   },
-  stoneIcon: {
-    fontSize: 22,
+  stoneSurfaceHighlight: {
+    position: 'absolute',
+    top: 4,
+    left: 10,
+    right: 10,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  stoneBadge: {
+    color: '#D1D5DB',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     marginBottom: 2,
   },
-  stoneLabel: {
+  stoneActionText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   canvasCaption: {
     ...TossTheme.typography.micro,
     color: TossTheme.colors.textTertiary,
-    marginTop: 4,
+    marginTop: 2,
   },
   buttonRow: {
     flexDirection: 'row',
