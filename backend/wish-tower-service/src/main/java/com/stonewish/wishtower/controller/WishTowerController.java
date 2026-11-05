@@ -2,19 +2,34 @@ package com.stonewish.wishtower.controller;
 
 import com.stonewish.wishtower.service.DailyWishQuotaService;
 import com.stonewish.wishtower.service.DailyWishQuotaService.QuotaState;
+import com.stonewish.wishtower.service.TowerQueryService;
+import com.stonewish.wishtower.service.TowerQueryService.AnonymousWishCard;
+import com.stonewish.wishtower.service.TowerQueryService.CollapseMetadata;
+import com.stonewish.wishtower.service.TowerQueryService.FulfillWishResult;
+import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
+import com.stonewish.wishtower.service.TowerQueryService.TowerViewResponse;
 import com.stonewish.wishtower.service.WishCommandService;
 import com.stonewish.wishtower.service.WishCommandService.CreateWishCommand;
 import com.stonewish.wishtower.service.WishCommandService.WishRecord;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -32,18 +47,50 @@ public class WishTowerController {
     ) {}
 
     public record UpdateCategoryRequest(String categoryCode) {}
+    public record FulfillWishRequest(String bloomType) {}
     public record RewardQuotaRequest(int bonusAmount) {}
     public record ErrorResponse(String code, String message) {}
 
     private final WishCommandService wishCommandService;
     private final DailyWishQuotaService quotaService;
+    private final TowerQueryService towerQueryService;
 
     public WishTowerController(
         WishCommandService wishCommandService,
         DailyWishQuotaService quotaService
     ) {
+        this(wishCommandService, quotaService, null);
+    }
+
+    @Autowired
+    public WishTowerController(
+        WishCommandService wishCommandService,
+        DailyWishQuotaService quotaService,
+        TowerQueryService towerQueryService
+    ) {
         this.wishCommandService = wishCommandService;
         this.quotaService = quotaService;
+        this.towerQueryService = towerQueryService;
+    }
+
+    /**
+     * API-03: 돌탑 돌 목록 조회 (GET /api/v1/towers/{towerKey})
+     */
+    @GetMapping("/api/v1/towers/{towerKey}")
+    public TowerViewResponse getTower(
+        @PathVariable("towerKey") String towerKey,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestParam(value = "limit", defaultValue = "200") int limit
+    ) {
+        return towerQueryService.getTower(towerKey, userId, limit);
+    }
+
+    /**
+     * API-04: 돌탑 통계 조회 (GET /api/v1/towers/{towerKey}/stats)
+     */
+    @GetMapping("/api/v1/towers/{towerKey}/stats")
+    public TowerStatsResponse getTowerStats(@PathVariable("towerKey") String towerKey) {
+        return towerQueryService.getTowerStats(towerKey);
     }
 
     /**
@@ -68,6 +115,56 @@ public class WishTowerController {
                 req.poseJson()
             )
         );
+    }
+
+    /**
+     * API-06: 랜덤 소원 카드 풀 조회 (GET /api/v1/wishes/random?size=10&excludeIds=...)
+     */
+    @GetMapping("/api/v1/wishes/random")
+    public List<AnonymousWishCard> getRandomWishes(
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestParam(value = "size", defaultValue = "10") int size,
+        @RequestParam(value = "excludeIds", required = false) String excludeIdsRaw
+    ) {
+        Set<String> excludeIds = (excludeIdsRaw == null || excludeIdsRaw.isBlank())
+            ? Collections.emptySet()
+            : Arrays.stream(excludeIdsRaw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        return towerQueryService.getRandomWishes(userId, size, excludeIds);
+    }
+
+    /**
+     * API-09: 내 소원 목록 조회 (GET /api/v1/wishes/me)
+     */
+    @GetMapping("/api/v1/wishes/me")
+    public List<WishRecord> getMyWishes(@RequestHeader("X-User-Id") String userId) {
+        return towerQueryService.getMyWishes(userId);
+    }
+
+    /**
+     * API-10: 소원 이루어짐(성취) 처리 (PATCH /api/v1/wishes/{id}/fulfill)
+     */
+    @PatchMapping("/api/v1/wishes/{id}/fulfill")
+    public FulfillWishResult fulfillWish(
+        @PathVariable("id") String wishId,
+        @RequestHeader("X-User-Id") String userId,
+        @RequestBody(required = false) FulfillWishRequest req
+    ) {
+        String bloomType = req != null ? req.bloomType() : null;
+        return towerQueryService.fulfillWish(wishId, userId, bloomType);
+    }
+
+    /**
+     * API-11: 내 소원 삭제 및 돌탑 물리 붕괴 메타데이터 반환 (DELETE /api/v1/wishes/{id})
+     */
+    @DeleteMapping("/api/v1/wishes/{id}")
+    public CollapseMetadata deleteWish(
+        @PathVariable("id") String wishId,
+        @RequestHeader("X-User-Id") String userId
+    ) {
+        return towerQueryService.deleteWish(wishId, userId);
     }
 
     /**
@@ -99,7 +196,10 @@ public class WishTowerController {
 
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            HttpStatus status = "WISH_NOT_FOUND".equals(ex.getMessage())
+                ? HttpStatus.NOT_FOUND
+                : HttpStatus.BAD_REQUEST;
+            return ResponseEntity.status(status)
                 .body(new ErrorResponse(ex.getMessage(), ex.getMessage()));
         }
 
