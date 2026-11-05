@@ -6,6 +6,8 @@ import {
   TowerKey,
 } from '../domain/value-objects/TowerKey.ts';
 import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
+import { CheerSparkEffect } from '../presentation/components/CheerSparkEffect.tsx';
+import { StoneTowerCanvas } from '../presentation/components/StoneTowerCanvas.tsx';
 import { type DashboardViewState } from '../presentation/controllers/DashboardController.ts';
 
 const TOWER_TABS: readonly { label: string; key: TowerKey }[] = [
@@ -123,16 +125,15 @@ export default function HomeScreen() {
 
       {/* ③ 3D 돌탑 영역 */}
       <View style={styles.towerViewport}>
-        <Text style={styles.towerEmoji}>🪨</Text>
+        <StoneTowerCanvas stones={state.tower?.stones ?? []} />
+        <CheerSparkEffect
+          event={state.lastEffect}
+          towerTopY={state.tower?.topY() ?? 1.0}
+        />
         <Text style={styles.towerTitle}>
           {state.currentTowerKey.toString()} 돌탑 (
           {state.tower?.stones.length ?? 0}개 렌더링)
         </Text>
-        {state.lastEffect ? (
-          <Text style={styles.effectBadge}>
-            연출 재생: {state.lastEffect.type}
-          </Text>
-        ) : null}
         <Pressable
           style={styles.arViewButton}
           onPress={() => router.push('/stack/ar')}

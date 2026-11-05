@@ -3,6 +3,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type ReportReason } from '../../domain/ports/repositories.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { CheerSparkEffect } from '../../presentation/components/CheerSparkEffect.tsx';
+import { StoneTowerCanvas } from '../../presentation/components/StoneTowerCanvas.tsx';
 import { type ExploreWishesViewState } from '../../presentation/controllers/ExploreWishesController.ts';
 
 const REPORT_REASONS: readonly { reason: ReportReason; label: string }[] = [
@@ -91,20 +93,25 @@ export default function ExploreWishesScreen() {
 
       {errorBanner ? <Text style={styles.errorText}>{errorBanner}</Text> : null}
 
-      {state.lastEffect?.type === 'cheer_spark' ? (
-        <View style={styles.sparkBanner}>
-          <Text style={styles.sparkText}>
-            ✨ 응원 불꽃이 돌탑 꼭대기로 날아갔어요! (빛 단계{' '}
-            {state.lastEffect.level}
-            {state.lastEffect.levelUp ? ' · 단계 상승!' : ''})
-          </Text>
-        </View>
-      ) : null}
+      <CheerSparkEffect event={state.lastEffect} towerTopY={1.5} />
 
       {activeWish ? (
         <View style={styles.card}>
           <View style={styles.stonePreview}>
-            <Text style={styles.stoneEmoji}>🪨</Text>
+            <StoneTowerCanvas
+              stones={[
+                {
+                  id: activeWish.id,
+                  stone: activeWish.stone,
+                  status:
+                    activeWish.status === 'fulfilled' ? 'fulfilled' : 'active',
+                  bloom: activeWish.bloom,
+                  cheerLevel: activeWish.cheerLevel().level,
+                  isMine: activeWish.isMine,
+                  nickname: activeWish.displayNickname,
+                },
+              ]}
+            />
             <Text style={styles.glowBadge}>
               빛 단계 {activeWish.cheerLevel().level} (기준 1/5/15)
             </Text>
