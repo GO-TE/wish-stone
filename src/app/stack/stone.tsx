@@ -8,6 +8,7 @@ const STONE_SHAPES: readonly { shape: StoneShape; label: string }[] = [
   { shape: 'round', label: '둥근 조약돌' },
   { shape: 'flat', label: '납작한 강돌' },
   { shape: 'pebble', label: '작은 자갈돌' },
+  { shape: 'tall', label: '길쭉한 선돌' },
   { shape: 'boulder', label: '묵직한 바위돌' },
 ];
 

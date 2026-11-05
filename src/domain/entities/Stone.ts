@@ -1,6 +1,6 @@
 import { Pose } from '../value-objects/Pose.ts';
 
-export type StoneShape = 'round' | 'flat' | 'pebble' | 'boulder';
+export type StoneShape = 'round' | 'flat' | 'pebble' | 'boulder' | 'tall';
 
 export interface StoneProps {
   readonly shape: StoneShape;

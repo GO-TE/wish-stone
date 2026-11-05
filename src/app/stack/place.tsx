@@ -5,6 +5,7 @@ import { Tower } from '../../domain/entities/Tower.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
 import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { StoneTowerCanvas } from '../../presentation/components/StoneTowerCanvas.tsx';
 
 /**
  * SCR-07 쌓기 (일반 3D) 화면 (`/stack/place`)
@@ -62,7 +63,10 @@ export default function PlaceStone3DScreen() {
       ) : null}
 
       <View style={styles.canvasPlaceholder}>
-        <Text style={styles.canvasEmoji}>🪨</Text>
+        <StoneTowerCanvas
+          stones={sampleTower.stones}
+          collapsedShake={state.towerCollapsed}
+        />
         <Text style={styles.canvasCaption}>
           시도 횟수: {state.attempt}회 · 남은 일일 쿼터: {state.quota.remaining}회
         </Text>
