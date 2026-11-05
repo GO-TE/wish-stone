@@ -191,6 +191,7 @@ export default function PlaceStone3DScreen() {
                 borderColor: isDragging
                   ? TossTheme.colors.primary
                   : 'rgba(255, 255, 255, 0.4)',
+                cursor: isDragging ? ('grabbing' as any) : ('grab' as any),
               },
             ]}
           >
@@ -243,6 +244,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     justifyContent: 'space-between',
+    userSelect: 'none' as any,
   },
   header: {
     marginBottom: 8,
@@ -285,6 +287,7 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
+    userSelect: 'none' as any,
   },
   dropZone: {
     alignItems: 'center',
@@ -332,6 +335,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 8,
+    userSelect: 'none' as any,
   },
   stoneSurfaceHighlight: {
     position: 'absolute',
