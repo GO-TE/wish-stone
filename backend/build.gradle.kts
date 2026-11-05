@@ -19,6 +19,9 @@ allprojects {
 subprojects {
     apply(plugin = "java")
     apply(plugin = "io.spring.dependency-management")
+    if (name != "common-events") {
+        apply(plugin = "org.springframework.boot")
+    }
 
     java {
         toolchain {
