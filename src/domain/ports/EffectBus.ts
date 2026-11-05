@@ -11,7 +11,18 @@ export type VisualEffectEvent =
       readonly autoPlaced: boolean;
     }
   | {
+      readonly type: 'tower_collapsed';
+      readonly reason: 'drop_failed' | 'wish_deleted';
+      readonly affectedStoneCount: number;
+    }
+  | {
       readonly type: 'cheered';
+      readonly wishId: WishId;
+      readonly level: CheerLevelValue;
+      readonly levelUp: boolean;
+    }
+  | {
+      readonly type: 'cheer_spark';
       readonly wishId: WishId;
       readonly level: CheerLevelValue;
       readonly levelUp: boolean;
@@ -26,8 +37,8 @@ export type EffectListener = (event: VisualEffectEvent) => void;
 
 /**
  * 시각 연출 이벤트 버스 (옵저버 패턴)
- * 유스케이스와 3D 렌더링 연출(응원 불꽃, 연출용 돌, 단계 상승 빛, 피어남)을 분리한다.
- * 근거: 아키텍처 설계.md 7장, DB-010, DB-017, DB-020
+ * 유스케이스와 3D 렌더링 연출(응원 불꽃, 연출용 돌, 단계 상승 빛, 피어남, 돌탑 무너짐)을 분리한다.
+ * 근거: 아키텍처 설계.md 7장, DB-010, DB-017, DB-020, D-019
  */
 export class EffectBus {
   private readonly listeners = new Set<EffectListener>();

@@ -1,4 +1,5 @@
 import { Bloom, type BloomType } from '../value-objects/BloomType.ts';
+import { CategoryAutoClassifier } from '../value-objects/CategoryAutoClassifier.ts';
 import { CheerLevel } from '../value-objects/CheerLevel.ts';
 import { type CategoryCode, TowerKey } from '../value-objects/TowerKey.ts';
 import { Stone } from './Stone.ts';
@@ -8,7 +9,16 @@ export type UserId = string;
 export type WishStatus = 'active' | 'fulfilled' | 'hidden' | 'deleted';
 
 const MAX_WISH_LENGTH = 200;
-const PHONE_PATTERN = /\b01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\b/;
+export const DEFAULT_FORBIDDEN_WISH_WORDS: readonly string[] = Object.freeze([
+  '시발',
+  '씨발',
+  '병신',
+  '개새끼',
+  '불법도박',
+  '바카라',
+  '카지노',
+  '조건만남',
+]);
 
 export interface WishProps {
   readonly id: WishId;
@@ -16,7 +26,7 @@ export interface WishProps {
   readonly authorNickname?: string | null;
   readonly isMine: boolean;
   readonly content: string;
-  readonly category: CategoryCode;
+  readonly category?: CategoryCode;
   readonly scope: TowerKey;
   readonly stone: Stone;
   readonly status: WishStatus;
@@ -30,7 +40,7 @@ export interface WishProps {
 
 /**
  * 소원(Wish) 도메인 엔티티
- * 근거: 아키텍처 설계.md 3장, 데이터 모델.md, DB-009, DB-016~023, DB-030
+ * 근거: 아키텍처 설계.md 3장, D-016(카테고리 자동 분류 + 사후 수정), D-017(응원 단계), D-019(전화번호 제한 해제)
  */
 export class Wish {
   readonly id: WishId;
@@ -38,7 +48,7 @@ export class Wish {
   private readonly rawNickname: string | null;
   readonly isMine: boolean;
   readonly content: string;
-  readonly category: CategoryCode;
+  private _category: CategoryCode;
   readonly scope: TowerKey;
   readonly stone: Stone;
   private _status: WishStatus;
@@ -56,19 +66,24 @@ export class Wish {
     this.rawNickname = props.authorNickname ?? null;
     this.isMine = props.isMine;
     this.content = props.content.trim();
-    this.category = props.category;
+    this._category =
+      props.category ?? CategoryAutoClassifier.classify(this.content);
     this.scope = props.scope;
     this.stone = props.stone;
     this._status = props.status;
     this._bloom = props.bloom;
     this._cheerCount = props.cheerCount ?? 0;
-    this._cheerLevel = props.cheerLevel ?? CheerLevel.fromCount(this._cheerCount);
+    this._cheerLevel =
+      props.cheerLevel ?? CheerLevel.fromCount(this._cheerCount);
     this._cheeredByMe = props.cheeredByMe ?? false;
     this.createdAt = props.createdAt;
     this._fulfilledAt = props.fulfilledAt ?? null;
   }
 
-  static validateContent(content: string): void {
+  static validateContent(
+    content: string,
+    forbiddenWords: readonly string[] = DEFAULT_FORBIDDEN_WISH_WORDS
+  ): void {
     const trimmed = content.trim();
     if (trimmed.length === 0) {
       throw new Error('CONTENT_EMPTY');
@@ -76,9 +91,13 @@ export class Wish {
     if (trimmed.length > MAX_WISH_LENGTH) {
       throw new Error('CONTENT_TOO_LONG');
     }
-    if (PHONE_PATTERN.test(trimmed)) {
+    if (forbiddenWords.some((word) => trimmed.includes(word))) {
       throw new Error('CONTENT_BLOCKED');
     }
+  }
+
+  get category(): CategoryCode {
+    return this._category;
   }
 
   get status(): WishStatus {
@@ -98,7 +117,17 @@ export class Wish {
   }
 
   /**
-   * 그룹 돌탑일 때만 작성자 닉네임을 반환하고, 공개 돌탑(전체/카테고리)에서는 항상 null을 반환한다 (DB-005, DB-023)
+   * 자동 분류된 카테고리를 작성자가 직접 변경한다 (D-016)
+   */
+  changeCategory(newCategory: CategoryCode): void {
+    if (!this.isMine) {
+      throw new Error('NOT_OWNER');
+    }
+    this._category = newCategory;
+  }
+
+  /**
+   * 그룹 돌탑일 때만 작성자 닉네임(닉네임#태그)을 반환하고, 공개 돌탑에서는 항상 null을 반환한다 (DB-005, DB-023)
    */
   get displayNickname(): string | null {
     return this.scope.showsNickname() ? this.rawNickname : null;
@@ -111,9 +140,6 @@ export class Wish {
     return this.isMine ? this._cheerCount : null;
   }
 
-  /**
-   * 모든 사용자에게 노출되는 응원 빛 단계 (0~3단계)
-   */
   cheerLevel(): CheerLevel {
     return this._cheerLevel;
   }

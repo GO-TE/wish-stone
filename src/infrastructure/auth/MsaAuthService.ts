@@ -12,13 +12,15 @@ interface AuthResponseDto {
   user: {
     id: string;
     nickname: string | null;
+    tag?: string | null;
+    displayName?: string | null;
     isGuest: boolean;
   };
 }
 
 /**
  * Spring Boot MSA (`user-auth-service` :8081 via Gateway :8080) 인증 어댑터
- * Apple / Kakao / Google OAuth2 및 게스트 로그인, 게스트 계정 연결(`link`)을 담당한다.
+ * Apple / Kakao / Google OAuth2 및 게스트 로그인, 게스트 계정 연결(`link`), 회원 탈퇴를 담당한다.
  * 근거: API 명세서.md API-01, API-02, API-17, API-18, D-007
  */
 export class MsaAuthService implements AuthService {
@@ -53,14 +55,25 @@ export class MsaAuthService implements AuthService {
     const res = await this.http.request<{
       id: string;
       nickname: string;
+      tag?: string | null;
+      displayName?: string | null;
       isGuest: boolean;
     }>('PUT', '/api/v1/users/me/nickname', {
-      nickname: nickname.value,
+      nickname: nickname.toRequestPayload(),
     });
+
+    const rawNick = res.displayName ?? res.nickname;
+    const explicitTag =
+      res.tag ??
+      (rawNick.includes('#')
+        ? undefined
+        : nickname.hasExplicitTag
+          ? nickname.tag
+          : undefined);
 
     const updated: UserProfile = {
       id: res.id,
-      nickname: new Nickname(res.nickname),
+      nickname: new Nickname(rawNick, explicitTag),
       isGuest: res.isGuest,
     };
     this.currentProfile = updated;
@@ -72,15 +85,24 @@ export class MsaAuthService implements AuthService {
     this.currentProfile = null;
   }
 
+  async deleteAccount(): Promise<void> {
+    await this.http.request('DELETE', '/api/v1/users/me');
+    this.http.setAccessToken(null);
+    this.currentProfile = null;
+  }
+
   currentUser(): UserProfile | null {
     return this.currentProfile;
   }
 
   private applySession(dto: AuthResponseDto): AuthSession {
     this.http.setAccessToken(dto.accessToken);
+    const rawNick = dto.user.displayName ?? dto.user.nickname;
     const profile: UserProfile = {
       id: dto.user.id,
-      nickname: dto.user.nickname ? new Nickname(dto.user.nickname) : null,
+      nickname: rawNick
+        ? new Nickname(rawNick, dto.user.tag ?? undefined)
+        : null,
       isGuest: dto.user.isGuest,
     };
     this.currentProfile = profile;

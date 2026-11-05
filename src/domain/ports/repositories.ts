@@ -16,22 +16,23 @@ export type ReportReason =
 
 export interface NewWishInput {
   readonly content: string;
-  readonly category: CategoryCode;
+  readonly category?: CategoryCode;
   readonly scope: TowerKey;
   readonly stone: Stone;
 }
 
 /**
- * 소원 저장소 포트 (Supabase 또는 추후 Spring Boot MSA 어댑터로 교체 가능)
- * 근거: 아키텍처 설계.md 4장, API 명세서.md
+ * 소원 저장소 포트 (Spring Boot MSA 어댑터 연동)
+ * 근거: 아키텍처 설계.md 4장, API 명세서.md, D-016
  */
 export interface WishRepository {
   create(input: NewWishInput): Promise<WishId>;
+  updateCategory?(id: WishId, category: CategoryCode): Promise<void>;
   random(count: number, excludeIds: readonly WishId[]): Promise<Wish[]>;
-  getById(id: WishId): Promise<Wish | null>;
   mine(filter?: WishStatus): Promise<Wish[]>;
   cheer(id: WishId): Promise<{ level: CheerLevel; levelUp: boolean }>;
   report(id: WishId, reason: ReportReason): Promise<void>;
+  reportWish?(id: WishId, reason: ReportReason): Promise<void>;
   fulfill(id: WishId, bloom?: BloomType): Promise<BloomType>;
   remove(id: WishId): Promise<void>;
 }

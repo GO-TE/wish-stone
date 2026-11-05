@@ -23,5 +23,6 @@ export interface AuthService {
   linkGuestTo(provider: Exclude<AuthProvider, 'guest'>): Promise<AuthSession>;
   setNickname(nickname: Nickname): Promise<UserProfile>;
   signOut(): Promise<void>;
+  deleteAccount?(): Promise<void>;
   currentUser(): UserProfile | null;
 }

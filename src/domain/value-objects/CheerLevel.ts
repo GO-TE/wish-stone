@@ -6,15 +6,19 @@ export interface CheerThresholds {
   readonly level3: number;
 }
 
+/**
+ * 초기 서비스 응원 빛 단계 기준값 (1개 / 5개 / 15개)
+ * 실 유저 증가 시 서버 설정값에 맞춰 동적으로 주입 가능하다 (D-017)
+ */
 export const DEFAULT_CHEER_THRESHOLDS: CheerThresholds = Object.freeze({
-  level1: 10,
-  level2: 50,
-  level3: 100,
+  level1: 1,
+  level2: 5,
+  level3: 15,
 });
 
 /**
  * 응원 수 단계 (0~3단계)
- * 정확한 응원 수는 작성자 본인에게만 공개하고 타인에게는 빛나는 단계만 노출한다 (DB-017, D-006)
+ * 정확한 응원 수는 작성자 본인에게만 공개하고 타인에게는 빛나는 단계만 노출한다 (DB-017, D-006, D-017)
  */
 export class CheerLevel {
   readonly level: CheerLevelValue;

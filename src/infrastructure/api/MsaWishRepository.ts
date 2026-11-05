@@ -28,13 +28,13 @@ interface WishDto {
   groupId: string | null;
   stoneShape: StoneShape;
   stoneColor: string;
-  pose: PoseJSON;
-  status: WishStatus;
+  pose?: PoseJSON | null;
+  status: string;
   bloomType: BloomType | null;
   cheerLevel: CheerLevelValue;
   cheerCount?: number;
   cheeredByMe?: boolean;
-  isMine: boolean;
+  isMine?: boolean;
   nickname?: string | null;
   createdAt: string;
   fulfilledAt?: string | null;
@@ -68,6 +68,14 @@ export class MsaWishRepository implements WishRepository {
     return res.id;
   }
 
+  async updateCategory(id: WishId, category: CategoryCode): Promise<void> {
+    await this.http.request(
+      'PATCH',
+      `/api/v1/wishes/${encodeURIComponent(id)}/category`,
+      { categoryCode: category }
+    );
+  }
+
   async random(
     count: number,
     excludeIds: readonly WishId[]
@@ -80,15 +88,7 @@ export class MsaWishRepository implements WishRepository {
       'GET',
       `/api/v1/wishes/random?${query.toString()}`
     );
-    return list.map((dto) => this.toDomain(dto));
-  }
-
-  async getById(id: WishId): Promise<Wish | null> {
-    const dto = await this.http.request<WishDto | null>(
-      'GET',
-      `/api/v1/wishes/${encodeURIComponent(id)}`
-    );
-    return dto ? this.toDomain(dto) : null;
+    return list.map((dto) => this.toDomain(dto, false));
   }
 
   async mine(filter?: WishStatus): Promise<Wish[]> {
@@ -97,7 +97,7 @@ export class MsaWishRepository implements WishRepository {
       'GET',
       `/api/v1/wishes/me${query}`
     );
-    return list.map((dto) => this.toDomain(dto));
+    return list.map((dto) => this.toDomain(dto, true));
   }
 
   async cheer(
@@ -122,6 +122,10 @@ export class MsaWishRepository implements WishRepository {
     );
   }
 
+  async reportWish(id: WishId, reason: ReportReason): Promise<void> {
+    return this.report(id, reason);
+  }
+
   async fulfill(id: WishId, bloom?: BloomType): Promise<BloomType> {
     const res = await this.http.request<{ bloomType: BloomType }>(
       'PATCH',
@@ -138,29 +142,32 @@ export class MsaWishRepository implements WishRepository {
     );
   }
 
-  private toDomain(dto: WishDto): Wish {
+  private toDomain(dto: WishDto, defaultIsMine = false): Wish {
     const scope = dto.groupId
       ? TowerKey.group(dto.groupId)
       : TowerKey.global();
 
+    const normalizedStatus = (dto.status ?? 'active').toLowerCase() as WishStatus;
+    const pose = dto.pose ? Pose.fromJSON(dto.pose) : Pose.identity();
+
     return new Wish({
       id: dto.id,
       authorNickname: dto.nickname ?? null,
-      isMine: dto.isMine,
+      isMine: dto.isMine ?? defaultIsMine,
       content: dto.content,
       category: dto.categoryCode,
       scope,
       stone: new Stone({
-        shape: dto.stoneShape,
-        color: dto.stoneColor,
-        pose: Pose.fromJSON(dto.pose),
+        shape: dto.stoneShape ?? 'round',
+        color: dto.stoneColor ?? '#A89F91',
+        pose,
       }),
-      status: dto.status,
+      status: normalizedStatus,
       bloom: dto.bloomType,
       cheerCount: dto.cheerCount ?? 0,
-      cheerLevel: CheerLevel.of(dto.cheerLevel),
+      cheerLevel: CheerLevel.of(dto.cheerLevel ?? 0),
       cheeredByMe: dto.cheeredByMe ?? false,
-      createdAt: new Date(dto.createdAt),
+      createdAt: dto.createdAt ? new Date(dto.createdAt) : new Date(),
       fulfilledAt: dto.fulfilledAt ? new Date(dto.fulfilledAt) : null,
     });
   }
