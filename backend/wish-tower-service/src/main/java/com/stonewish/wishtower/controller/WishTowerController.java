@@ -6,16 +6,20 @@ import com.stonewish.wishtower.service.TowerQueryService;
 import com.stonewish.wishtower.service.TowerQueryService.AnonymousWishCard;
 import com.stonewish.wishtower.service.TowerQueryService.CollapseMetadata;
 import com.stonewish.wishtower.service.TowerQueryService.FulfillWishResult;
+import com.stonewish.wishtower.service.TowerQueryService.MyWishView;
+import com.stonewish.wishtower.service.TowerQueryService.StonePose;
 import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
 import com.stonewish.wishtower.service.TowerQueryService.TowerViewResponse;
 import com.stonewish.wishtower.service.WishCommandService;
 import com.stonewish.wishtower.service.WishCommandService.CreateWishCommand;
 import com.stonewish.wishtower.service.WishCommandService.WishRecord;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,14 +41,72 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestController
 public class WishTowerController {
 
+    /**
+     * M-01: 요청 시 pose JSON 객체({x,y,z,qx,qy,qz,qw})를 기본 수신하되 하위 호환용 poseJson도 허용
+     */
     public record CreateWishRequest(
         String content,
         String categoryCode,
         String groupId,
         String stoneShape,
         String stoneColor,
+        StonePose pose,
         String poseJson
-    ) {}
+    ) {
+        public CreateWishRequest(
+            String content,
+            String categoryCode,
+            String groupId,
+            String stoneShape,
+            String stoneColor,
+            StonePose pose
+        ) {
+            this(content, categoryCode, groupId, stoneShape, stoneColor, pose, null);
+        }
+
+        public String resolvePoseJson() {
+            if (pose != null) {
+                return pose.toJson();
+            }
+            if (poseJson != null && !poseJson.isBlank()) {
+                return poseJson;
+            }
+            return StonePose.DEFAULT.toJson();
+        }
+    }
+
+    /**
+     * M-01 & M-02: 생성/카테고리 수정 응답 DTO (pose 객체 및 소문자 status)
+     */
+    public record WishResponse(
+        String id,
+        String groupId,
+        String categoryCode,
+        String content,
+        String stoneShape,
+        String stoneColor,
+        StonePose pose,
+        int cheerCount,
+        String status,
+        boolean isMine,
+        Instant createdAt
+    ) {
+        public static WishResponse from(WishRecord record) {
+            return new WishResponse(
+                record.id(),
+                record.groupId(),
+                record.categoryCode(),
+                record.content(),
+                record.stoneShape(),
+                record.stoneColor(),
+                StonePose.fromJson(record.poseJson()),
+                record.cheerCount(),
+                record.status() != null ? record.status().toLowerCase(Locale.ROOT) : "active",
+                true,
+                record.createdAt()
+            );
+        }
+    }
 
     public record UpdateCategoryRequest(String categoryCode) {}
     public record FulfillWishRequest(String bloomType) {}
@@ -98,12 +160,12 @@ public class WishTowerController {
      */
     @PostMapping("/api/v1/wishes")
     @ResponseStatus(HttpStatus.CREATED)
-    public WishRecord createWish(
+    public WishResponse createWish(
         @RequestHeader("X-User-Id") String userId,
         @RequestHeader(value = "X-User-Guest", defaultValue = "false") boolean isGuest,
         @RequestBody CreateWishRequest req
     ) {
-        return wishCommandService.createWish(
+        WishRecord created = wishCommandService.createWish(
             new CreateWishCommand(
                 userId,
                 isGuest,
@@ -112,35 +174,43 @@ public class WishTowerController {
                 req.groupId(),
                 req.stoneShape(),
                 req.stoneColor(),
-                req.poseJson()
+                req.resolvePoseJson()
             )
         );
+        return WishResponse.from(created);
     }
 
     /**
-     * API-06: 랜덤 소원 카드 풀 조회 (GET /api/v1/wishes/random?size=10&excludeIds=...)
+     * API-06: 랜덤 소원 카드 풀 조회 (GET /api/v1/wishes/random?count=10&excludeIds=...)
+     * M-04: count 파라미터 우선 지원 (size 파라미터 하위 호환 별칭 지원)
      */
     @GetMapping("/api/v1/wishes/random")
     public List<AnonymousWishCard> getRandomWishes(
         @RequestHeader(value = "X-User-Id", required = false) String userId,
-        @RequestParam(value = "size", defaultValue = "10") int size,
+        @RequestParam(value = "count", required = false) Integer count,
+        @RequestParam(value = "size", required = false) Integer size,
         @RequestParam(value = "excludeIds", required = false) String excludeIdsRaw
     ) {
+        int resolvedCount = count != null ? count : (size != null ? size : 10);
         Set<String> excludeIds = (excludeIdsRaw == null || excludeIdsRaw.isBlank())
             ? Collections.emptySet()
             : Arrays.stream(excludeIdsRaw.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toSet());
-        return towerQueryService.getRandomWishes(userId, size, excludeIds);
+        return towerQueryService.getRandomWishes(userId, resolvedCount, excludeIds);
     }
 
     /**
-     * API-09: 내 소원 목록 조회 (GET /api/v1/wishes/me)
+     * API-09: 내 소원 목록 조회 (GET /api/v1/wishes/me?status=active|fulfilled)
+     * M-08: 선택적 status 필터링 지원 및 isMine: true 포함
      */
     @GetMapping("/api/v1/wishes/me")
-    public List<WishRecord> getMyWishes(@RequestHeader("X-User-Id") String userId) {
-        return towerQueryService.getMyWishes(userId);
+    public List<MyWishView> getMyWishes(
+        @RequestHeader("X-User-Id") String userId,
+        @RequestParam(value = "status", required = false) String status
+    ) {
+        return towerQueryService.getMyWishes(userId, status);
     }
 
     /**
@@ -171,12 +241,13 @@ public class WishTowerController {
      * D-016: 자동 분류된 소원 카테고리를 사용자가 사후 수정 (PATCH /api/v1/wishes/{wishId}/category)
      */
     @PatchMapping("/api/v1/wishes/{wishId}/category")
-    public WishRecord updateCategory(
+    public WishResponse updateCategory(
         @PathVariable("wishId") String wishId,
         @RequestHeader("X-User-Id") String userId,
         @RequestBody UpdateCategoryRequest req
     ) {
-        return wishCommandService.updateCategory(wishId, userId, req.categoryCode());
+        WishRecord updated = wishCommandService.updateCategory(wishId, userId, req.categoryCode());
+        return WishResponse.from(updated);
     }
 
     /**

@@ -1,16 +1,20 @@
 package com.stonewish.userauth.controller;
 
 import com.stonewish.userauth.service.UserAccountService;
+import com.stonewish.userauth.service.UserAccountService.AuthTokenResult;
 import com.stonewish.userauth.service.UserAccountService.UserAccount;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestController
 public class UserAuthController {
 
+    public record LoginRequest(String provider) {}
     public record NicknameUpdateRequest(String nickname) {}
     public record LinkSocialRequest(String provider) {}
     public record NicknameBatchRequest(List<String> userIds) {}
@@ -32,6 +37,32 @@ public class UserAuthController {
 
     public UserAuthController(UserAccountService accountService) {
         this.accountService = accountService;
+    }
+
+    /**
+     * API-17 (M-06): 소셜(Apple/Kakao/Google) 및 게스트 로그인 (POST /api/v1/auth/login)
+     */
+    @PostMapping("/api/v1/auth/login")
+    public AuthTokenResult login(@RequestBody(required = false) LoginRequest request) {
+        String provider = request != null ? request.provider() : "guest";
+        return accountService.login(provider);
+    }
+
+    /**
+     * API-02 (M-06): 내 프로필 조회 (GET /api/v1/users/me)
+     */
+    @GetMapping("/api/v1/users/me")
+    public UserAccount getMe(@RequestHeader("X-User-Id") String userId) {
+        return accountService.getMyProfile(userId);
+    }
+
+    /**
+     * SCR-18: 회원 탈퇴 - 계정 익명화 및 소프트 삭제 (DELETE /api/v1/users/me -> 204 No Content)
+     */
+    @DeleteMapping("/api/v1/users/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void withdrawAccount(@RequestHeader("X-User-Id") String userId) {
+        accountService.withdrawAccount(userId);
     }
 
     /**
@@ -46,14 +77,14 @@ public class UserAuthController {
     }
 
     /**
-     * API-18: 게스트 계정을 소셜 계정으로 연결 (POST /api/v1/auth/link)
+     * API-18 (M-06): 게스트 계정을 소셜 계정으로 연결 (POST /api/v1/auth/link -> {accessToken, user})
      */
     @PostMapping("/api/v1/auth/link")
-    public UserAccount linkSocial(
+    public AuthTokenResult linkSocial(
         @RequestHeader("X-User-Id") String userId,
         @RequestBody LinkSocialRequest request
     ) {
-        return accountService.linkGuestToSocial(userId, request.provider());
+        return accountService.linkGuestToSocialWithToken(userId, request.provider());
     }
 
     /**
@@ -69,7 +100,10 @@ public class UserAuthController {
 
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            HttpStatus status = "USER_NOT_FOUND".equals(ex.getMessage())
+                ? HttpStatus.NOT_FOUND
+                : HttpStatus.BAD_REQUEST;
+            return ResponseEntity.status(status)
                 .body(new ErrorResponse(ex.getMessage(), "잘못된 요청 파라미터입니다: " + ex.getMessage()));
         }
 

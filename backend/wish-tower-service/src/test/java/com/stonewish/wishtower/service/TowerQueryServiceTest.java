@@ -7,6 +7,8 @@ import com.stonewish.wishtower.client.UserAuthFeignClient;
 import com.stonewish.wishtower.service.TowerQueryService.AnonymousWishCard;
 import com.stonewish.wishtower.service.TowerQueryService.CollapseMetadata;
 import com.stonewish.wishtower.service.TowerQueryService.FulfillWishResult;
+import com.stonewish.wishtower.service.TowerQueryService.MyWishView;
+import com.stonewish.wishtower.service.TowerQueryService.StonePose;
 import com.stonewish.wishtower.service.TowerQueryService.TowerQueryPort;
 import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
 import com.stonewish.wishtower.service.TowerQueryService.TowerViewResponse;
@@ -38,13 +40,19 @@ class TowerQueryServiceTest {
     }
 
     @Test
-    @DisplayName("API-03 공개 돌탑 조회: floorIndex 오름차순으로 정렬되며 작성자 닉네임(authorNickname)은 null로 완전 익명이 보장된다")
+    @DisplayName("API-03 공개 돌탑 조회 (M-01, M-02): floorIndex 정렬, pose 객체 변환, 소문자 status, nickname=null 익명성이 보장된다")
     void getPublicTower_ordersByFloorIndexAndHidesAuthorIdentity() {
         Instant t1 = Instant.parse("2026-11-05T01:00:00Z");
         Instant t2 = Instant.parse("2026-11-05T02:00:00Z");
 
-        queryPort.addWish(new WishRecord("w-2", "user-other", null, "job", "두 번째 돌", "flat", "#FFF", "{}", 6, "ACTIVE", t2));
-        queryPort.addWish(new WishRecord("w-1", "user-me", null, "study", "첫 번째 돌", "round", "#000", "{}", 1, "ACTIVE", t1));
+        queryPort.addWish(new WishRecord(
+            "w-2", "user-other", null, "job", "두 번째 돌", "flat", "#FFF",
+            "{\"x\":0.5,\"y\":2.25,\"z\":-0.1,\"qx\":0,\"qy\":0,\"qz\":0,\"qw\":1}", 6, "ACTIVE", t2
+        ));
+        queryPort.addWish(new WishRecord(
+            "w-1", "user-me", null, "study", "첫 번째 돌", "round", "#000",
+            "{\"x\":0,\"y\":1.0,\"z\":0,\"qx\":0,\"qy\":0,\"qz\":0,\"qw\":1}", 1, "ACTIVE", t1
+        ));
 
         TowerViewResponse response = service.getTower("global", "user-me", 200);
 
@@ -55,19 +63,23 @@ class TowerQueryServiceTest {
         assertThat(response.stones().get(0).id()).isEqualTo("w-1");
         assertThat(response.stones().get(0).floorIndex()).isEqualTo(0);
         assertThat(response.stones().get(0).isMine()).isTrue();
-        assertThat(response.stones().get(0).authorNickname()).isNull();
+        assertThat(response.stones().get(0).nickname()).isNull();
+        assertThat(response.stones().get(0).status()).isEqualTo("active");
+        assertThat(response.stones().get(0).pose()).isEqualTo(new StonePose(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0));
         assertThat(response.stones().get(0).cheerLevel()).isEqualTo(1);
 
         // 두 번째 층 (floorIndex = 1)
         assertThat(response.stones().get(1).id()).isEqualTo("w-2");
         assertThat(response.stones().get(1).floorIndex()).isEqualTo(1);
         assertThat(response.stones().get(1).isMine()).isFalse();
-        assertThat(response.stones().get(1).authorNickname()).isNull();
+        assertThat(response.stones().get(1).nickname()).isNull();
+        assertThat(response.stones().get(1).status()).isEqualTo("active");
+        assertThat(response.stones().get(1).pose().y()).isEqualTo(2.25);
         assertThat(response.stones().get(1).cheerLevel()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("API-03 지인 그룹 돌탑 조회: UserAuthFeignClient로 '닉네임#태그'를 배치 해석하고, 장애 시 '익명의 그룹원'으로 폴백한다")
+    @DisplayName("API-03 지인 그룹 돌탑 조회 (M-02): UserAuthFeignClient로 nickname('닉네임#태그')을 배치 해석하고, 장애 시 '익명의 그룹원'으로 폴백한다")
     void getGroupTower_resolvesNicknameTagAndFallsBackOnFeignFailure() {
         Instant t1 = Instant.parse("2026-11-05T01:00:00Z");
         Instant t2 = Instant.parse("2026-11-05T02:00:00Z");
@@ -81,20 +93,20 @@ class TowerQueryServiceTest {
 
         TowerViewResponse normalResp = service.getTower("group:grp-1", "u-100", 200);
         assertThat(normalResp.stones()).hasSize(2);
-        assertThat(normalResp.stones().get(0).authorNickname()).isEqualTo("소원빌기#0412");
+        assertThat(normalResp.stones().get(0).nickname()).isEqualTo("소원빌기#0412");
         assertThat(normalResp.stones().get(0).cheerLevel()).isEqualTo(3);
-        assertThat(normalResp.stones().get(1).authorNickname()).isEqualTo("돌탑장인#9981");
+        assertThat(normalResp.stones().get(1).nickname()).isEqualTo("돌탑장인#9981");
 
         // 2) user-auth-service 타임아웃/장애 시 CircuitBreaker 폴백("익명의 그룹원") 확인
         feignClient.shouldFail = true;
         TowerViewResponse fallbackResp = service.getTower("group:grp-1", "u-100", 200);
         assertThat(fallbackResp.stones()).hasSize(2);
-        assertThat(fallbackResp.stones().get(0).authorNickname()).isEqualTo("익명의 그룹원");
-        assertThat(fallbackResp.stones().get(1).authorNickname()).isEqualTo("익명의 그룹원");
+        assertThat(fallbackResp.stones().get(0).nickname()).isEqualTo("익명의 그룹원");
+        assertThat(fallbackResp.stones().get(1).nickname()).isEqualTo("익명의 그룹원");
     }
 
     @Test
-    @DisplayName("API-06 랜덤 소원 풀 조회: 본인 소원, excludeIds, 지인 그룹 소원을 모두 제외하고 userId 필드가 없는 완전 익명 카드를 반환한다")
+    @DisplayName("API-06 랜덤 소원 풀 조회 (M-04): 본인·excludeIds·그룹 소원을 제외하고 pose/status 포함 및 userId/nickname 미포함 익명 카드를 반환한다")
     void getRandomWishes_excludesOwnAndExcludeIdsAndStripsUserId() {
         Instant now = Instant.now();
         queryPort.addWish(new WishRecord("w-mine", "user-me", null, "job", "내 소원", "round", "#111", "{}", 0, "ACTIVE", now));
@@ -107,16 +119,18 @@ class TowerQueryServiceTest {
 
         assertThat(cards).extracting(AnonymousWishCard::id)
             .containsExactlyInAnyOrder("w-valid-1", "w-valid-2");
+        assertThat(cards.get(0).status()).isEqualTo("active");
+        assertThat(cards.get(0).pose()).isNotNull();
 
-        // AnonymousWishCard 레코드에 userId 컴포넌트가 아예 존재하지 않음을 리플렉션으로 검증
+        // AnonymousWishCard 레코드에 userId/nickname 컴포넌트가 아예 존재하지 않음을 리플렉션으로 검증
         List<String> fieldNames = Arrays.stream(AnonymousWishCard.class.getRecordComponents())
             .map(RecordComponent::getName)
             .toList();
-        assertThat(fieldNames).doesNotContain("userId", "authorId", "authorNickname");
+        assertThat(fieldNames).doesNotContain("userId", "authorId", "nickname", "authorNickname");
     }
 
     @Test
-    @DisplayName("API-04, API-10, API-11: 성취/삭제는 작성자 본인만 가능하며, 삭제 시 통계가 원자적으로 차감되고 tower_collapsed 물리 메타데이터가 반환된다")
+    @DisplayName("API-04, API-09, API-10, API-11 (M-03, M-05, M-08): 성취/삭제 권한 검증, flower|sprout|moss 개화 타입, 내 소원 status 필터 및 통계 필드 검증")
     void fulfillAndDeleteWish_enforcesOwnershipAndReturnsCollapseMetadata() {
         Instant t1 = Instant.parse("2026-11-05T01:00:00Z");
         Instant t2 = Instant.parse("2026-11-05T02:00:00Z");
@@ -126,11 +140,12 @@ class TowerQueryServiceTest {
         queryPort.addWish(new WishRecord("w-floor-1", "user-owner", null, "study", "2층 내 소원", "flat", "#222", "{}", 7, "ACTIVE", t2));
         queryPort.addWish(new WishRecord("w-floor-2", "user-3", null, "health", "3층 소원", "tall", "#333", "{}", 2, "ACTIVE", t3));
 
-        // 초기 통계 확인 (돌 3개, 총 응원 12, 오늘 소원 3)
+        // 초기 통계 확인 (M-03: stoneCount=3, cheerCount=12, todayCount=3, fulfilledCount=0)
         TowerStatsResponse initialStats = service.getTowerStats("global");
-        assertThat(initialStats.totalStoneCount()).isEqualTo(3L);
-        assertThat(initialStats.totalCheerCount()).isEqualTo(12L);
-        assertThat(initialStats.todayWishCount()).isEqualTo(3L);
+        assertThat(initialStats.stoneCount()).isEqualTo(3L);
+        assertThat(initialStats.cheerCount()).isEqualTo(12L);
+        assertThat(initialStats.todayCount()).isEqualTo(3L);
+        assertThat(initialStats.fulfilledCount()).isEqualTo(0L);
 
         // 타인이 성취/삭제 시도 시 NOT_OWNER 예외
         assertThatThrownBy(() -> service.fulfillWish("w-floor-1", "hacker-user", "flower"))
@@ -141,16 +156,23 @@ class TowerQueryServiceTest {
             .isInstanceOf(IllegalStateException.class)
             .hasMessage("NOT_OWNER");
 
-        // 작성자 본인이 소원 성취(FULFILLED) 처리
-        FulfillWishResult fulfilled = service.fulfillWish("w-floor-1", "user-owner", "cherry_blossom");
-        assertThat(fulfilled.status()).isEqualTo("FULFILLED");
-        assertThat(fulfilled.bloomType()).isEqualTo("cherry_blossom");
-        assertThat(service.getMyWishes("user-owner")).hasSize(1);
+        // 작성자 본인이 소원 성취(fulfilled) 처리 (M-05: flower|sprout|moss 중 선택 또는 기본값 flower)
+        FulfillWishResult fulfilled = service.fulfillWish("w-floor-1", "user-owner", null);
+        assertThat(fulfilled.status()).isEqualTo("fulfilled");
+        assertThat(fulfilled.bloomType()).isEqualTo("flower");
+
+        // M-08: 내 소원 목록 조회 (?status=fulfilled 필터 및 isMine=true 검증)
+        List<MyWishView> fulfilledWishes = service.getMyWishes("user-owner", "fulfilled");
+        assertThat(fulfilledWishes).hasSize(1);
+        assertThat(fulfilledWishes.get(0).isMine()).isTrue();
+        assertThat(fulfilledWishes.get(0).status()).isEqualTo("fulfilled");
+        assertThat(fulfilledWishes.get(0).bloomType()).isEqualTo("flower");
+        assertThat(service.getMyWishes("user-owner", "active")).isEmpty();
 
         // 작성자 본인이 2층(floorIndex = 1) 소원 삭제 -> tower_collapsed 메타데이터 및 통계 차감 검증
         CollapseMetadata collapse = service.deleteWish("w-floor-1", "user-owner");
         assertThat(collapse.wishId()).isEqualTo("w-floor-1");
-        assertThat(collapse.status()).isEqualTo("DELETED");
+        assertThat(collapse.status()).isEqualTo("deleted");
         assertThat(collapse.eventType()).isEqualTo("tower_collapsed");
         assertThat(collapse.collapsedFloorIndex()).isEqualTo(1);
         assertThat(collapse.remainingStoneCount()).isEqualTo(2L);
@@ -184,6 +206,7 @@ class TowerQueryServiceTest {
         private final Map<String, AtomicLong> stoneCounts = new HashMap<>();
         private final Map<String, AtomicLong> cheerCounts = new HashMap<>();
         private final Map<String, AtomicLong> todayCounts = new HashMap<>();
+        private final Map<String, AtomicLong> fulfilledCounts = new HashMap<>();
 
         void addWish(WishRecord wish) {
             store.put(wish.id(), wish);
@@ -193,6 +216,9 @@ class TowerQueryServiceTest {
             stoneCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
             cheerCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).addAndGet(wish.cheerCount());
             todayCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
+            if ("FULFILLED".equalsIgnoreCase(wish.status())) {
+                fulfilledCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
+            }
         }
 
         @Override
@@ -220,7 +246,7 @@ class TowerQueryServiceTest {
         public List<WishRecord> findAllPublicActiveWishes() {
             return store.values().stream()
                 .filter(w -> w.groupId() == null || w.groupId().isBlank())
-                .filter(w -> "ACTIVE".equals(w.status()))
+                .filter(w -> "ACTIVE".equalsIgnoreCase(w.status()))
                 .toList();
         }
 
@@ -257,8 +283,9 @@ class TowerQueryServiceTest {
             return new TowerStatsResponse(
                 towerKey,
                 stoneCounts.getOrDefault(towerKey, new AtomicLong(0)).get(),
-                cheerCounts.getOrDefault(towerKey, new AtomicLong(0)).get(),
-                todayCounts.getOrDefault(towerKey, new AtomicLong(0)).get()
+                todayCounts.getOrDefault(towerKey, new AtomicLong(0)).get(),
+                fulfilledCounts.getOrDefault(towerKey, new AtomicLong(0)).get(),
+                cheerCounts.getOrDefault(towerKey, new AtomicLong(0)).get()
             );
         }
 

@@ -2,9 +2,14 @@ package com.stonewish.userauth.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.stonewish.userauth.controller.UserAuthController;
+import com.stonewish.userauth.controller.UserAuthController.LinkSocialRequest;
+import com.stonewish.userauth.controller.UserAuthController.LoginRequest;
+import com.stonewish.userauth.service.UserAccountService.AuthTokenResult;
 import com.stonewish.userauth.service.UserAccountService.UserAccount;
 import com.stonewish.userauth.service.UserAccountService.UserAccountPort;
 import java.util.HashMap;
@@ -20,11 +25,13 @@ class UserAccountServiceTest {
 
     private InMemoryUserAccountAdapter accountPort;
     private UserAccountService service;
+    private UserAuthController controller;
 
     @BeforeEach
     void setUp() {
         accountPort = new InMemoryUserAccountAdapter();
         service = new UserAccountService(accountPort, new Random(42L));
+        controller = new UserAuthController(service);
 
         accountPort.save(new UserAccount("user-1", null, null, true, null));
         accountPort.save(new UserAccount("user-2", null, null, false, "kakao"));
@@ -57,15 +64,36 @@ class UserAccountServiceTest {
     }
 
     @Test
-    @DisplayName("D-007: 게스트 계정을 소셜 계정으로 연결(link)해도 기존 userId와 닉네임#태그는 그대로 유지된다")
+    @DisplayName("D-007 & M-06: 게스트 계정을 소셜 계정으로 연결(link)하면 기존 userId와 닉네임#태그가 보존된 채 새 토큰({accessToken, user})이 발급된다")
     void linkGuestToSocialPreservesUserIdAndNickname() {
         service.updateNicknameAndTag("user-1", "돌탑지기#real");
-        UserAccount linked = service.linkGuestToSocial("user-1", "kakao");
+        AuthTokenResult linkedResult = controller.linkSocial("user-1", new LinkSocialRequest("kakao"));
 
-        assertEquals("user-1", linked.id());
-        assertEquals("돌탑지기#real", linked.displayName());
-        assertFalse(linked.isGuest());
-        assertEquals("kakao", linked.linkedProvider());
+        assertNotNull(linkedResult.accessToken());
+        assertEquals("uid:user-1:guest:false", linkedResult.accessToken());
+        assertEquals("user-1", linkedResult.user().id());
+        assertEquals("돌탑지기#real", linkedResult.user().displayName());
+        assertFalse(linkedResult.user().isGuest());
+        assertEquals("kakao", linkedResult.user().linkedProvider());
+    }
+
+    @Test
+    @DisplayName("M-06 & SCR-18: 게스트/소셜 로그인(POST /api/v1/auth/login), 내 프로필 조회(GET /api/v1/users/me), 회원 탈퇴(DELETE /api/v1/users/me) 검증")
+    void loginGetMeAndWithdrawAccount() {
+        AuthTokenResult loginRes = controller.login(new LoginRequest("guest"));
+        String uid = loginRes.user().id();
+        assertTrue(loginRes.user().isGuest());
+        assertEquals("uid:" + uid + ":guest:true", loginRes.accessToken());
+
+        UserAccount me = controller.getMe(uid);
+        assertEquals(uid, me.id());
+
+        // SCR-18 회원 탈퇴 후 재조회 시 USER_NOT_FOUND 예외 발생
+        controller.withdrawAccount(uid);
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> controller.getMe(uid)
+        );
     }
 
     @Test

@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +18,8 @@ import org.springframework.stereotype.Service;
  * 2) 게스트 -> 소셜 계정 연결(link, D-007):
  *    - 새로운 userId를 발급하면 게스트 시절 쌓은 돌이 증발합니다.
  *    - 반드시 기존 게스트의 userId는 유지한 채 isGuest=false로 바꾸고 소셜 Identity만 연결해야 데이터가 보존됩니다.
+ * 3) 회원 탈퇴(SCR-18):
+ *    - 탈퇴 시 개인 식별 정보(nickname, tag, linkedProvider)를 익명화(null) 및 소프트 삭제 처리합니다.
  */
 @Service
 public class UserAccountService {
@@ -24,6 +27,7 @@ public class UserAccountService {
     private static final Set<String> FORBIDDEN_IMPERSONATION_WORDS = Set.of(
         "관리자", "운영자", "admin", "system", "stonewish"
     );
+    private static final Set<String> VALID_PROVIDERS = Set.of("guest", "kakao", "google", "apple");
     private static final String TAG_PATTERN = "^[a-zA-Z0-9가-힣]{2,10}$";
 
     public record NicknameWithTag(String nickname, String tag) {
@@ -45,11 +49,26 @@ public class UserAccountService {
         }
     }
 
+    /**
+     * M-06: 로그인 및 게스트->소셜 계정 연결 시 Gateway 호환 토큰(`uid:{id}:guest:{isGuest}`)과 유저 정보를 함께 반환한다.
+     */
+    public record AuthTokenResult(
+        String accessToken,
+        UserAccount user
+    ) {}
+
     public interface UserAccountPort {
         UserAccount findById(String userId);
         boolean existsByNicknameAndTag(String nickname, String tag, String excludeUserId);
         UserAccount save(UserAccount account);
         List<UserAccount> findByIds(List<String> userIds);
+
+        default void deleteOrAnonymize(String userId) {
+            UserAccount existing = findById(userId);
+            if (existing != null) {
+                save(new UserAccount(existing.id(), null, null, true, "withdrawn"));
+            }
+        }
     }
 
     private final UserAccountPort accountPort;
@@ -62,6 +81,53 @@ public class UserAccountService {
     public UserAccountService(UserAccountPort accountPort, Random random) {
         this.accountPort = accountPort;
         this.random = random;
+    }
+
+    /**
+     * API-17 (M-06): 소셜(Apple/Kakao/Google) 및 게스트 로그인 (POST /api/v1/auth/login)
+     * Gateway JwtHeaderSanitizeFilter가 검증·파싱하는 `uid:{id}:guest:{bool}` 서명 토큰을 발급한다.
+     */
+    public AuthTokenResult login(String provider) {
+        String normalizedProvider = (provider == null || provider.isBlank())
+            ? "guest"
+            : provider.trim().toLowerCase(Locale.ROOT);
+        if (!VALID_PROVIDERS.contains(normalizedProvider)) {
+            throw new IllegalArgumentException("INVALID_AUTH_PROVIDER");
+        }
+
+        boolean isGuest = "guest".equals(normalizedProvider);
+        String userId = UUID.randomUUID().toString();
+        UserAccount created = new UserAccount(
+            userId,
+            null,
+            null,
+            isGuest,
+            isGuest ? null : normalizedProvider
+        );
+        UserAccount saved = accountPort.save(created);
+        return new AuthTokenResult(issueToken(saved), saved);
+    }
+
+    /**
+     * API-02 (M-06): 내 프로필 조회 (GET /api/v1/users/me)
+     */
+    public UserAccount getMyProfile(String userId) {
+        UserAccount existing = accountPort.findById(userId);
+        if (existing == null || "withdrawn".equals(existing.linkedProvider())) {
+            throw new IllegalArgumentException("USER_NOT_FOUND");
+        }
+        return existing;
+    }
+
+    /**
+     * SCR-18: 회원 탈퇴 - 계정 익명화 및 소프트 삭제 (DELETE /api/v1/users/me)
+     */
+    public void withdrawAccount(String userId) {
+        UserAccount existing = accountPort.findById(userId);
+        if (existing == null || "withdrawn".equals(existing.linkedProvider())) {
+            throw new IllegalArgumentException("USER_NOT_FOUND");
+        }
+        accountPort.deleteOrAnonymize(userId);
     }
 
     /**
@@ -95,7 +161,7 @@ public class UserAccountService {
         if (!existing.isGuest()) {
             throw new IllegalStateException("ALREADY_LINKED_ACCOUNT");
         }
-        if ("guest".equalsIgnoreCase(provider)) {
+        if (provider == null || "guest".equalsIgnoreCase(provider)) {
             throw new IllegalArgumentException("INVALID_SOCIAL_PROVIDER");
         }
 
@@ -107,6 +173,18 @@ public class UserAccountService {
             provider.toLowerCase(Locale.ROOT)
         );
         return accountPort.save(linked);
+    }
+
+    /**
+     * API-18 (M-06): 게스트 -> 소셜 연동 후 갱신된 `isGuest=false` 토큰과 유저 정보를 함께 반환한다.
+     */
+    public AuthTokenResult linkGuestToSocialWithToken(String userId, String provider) {
+        UserAccount linked = linkGuestToSocial(userId, provider);
+        return new AuthTokenResult(issueToken(linked), linked);
+    }
+
+    public static String issueToken(UserAccount account) {
+        return "uid:" + account.id() + ":guest:" + account.isGuest();
     }
 
     /**
