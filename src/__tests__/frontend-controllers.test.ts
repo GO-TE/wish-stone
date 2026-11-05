@@ -7,9 +7,11 @@ import { Tower } from '../domain/entities/Tower.ts';
 import { Pose } from '../domain/value-objects/Pose.ts';
 import { TowerKey } from '../domain/value-objects/TowerKey.ts';
 import { type PlatformCapabilities } from '../infrastructure/platform/PlatformCapabilities.ts';
+import { ExploreWishesController } from '../presentation/controllers/ExploreWishesController.ts';
 import { GroupController } from '../presentation/controllers/GroupController.ts';
 import { MyWishesController } from '../presentation/controllers/MyWishesController.ts';
 import { OnboardingController } from '../presentation/controllers/OnboardingController.ts';
+import { SettingsController } from '../presentation/controllers/SettingsController.ts';
 import { StackStoneController } from '../presentation/controllers/StackStoneController.ts';
 
 function createMockGatewayFetch() {
@@ -65,6 +67,14 @@ function createMockGatewayFetch() {
       };
     }
 
+    if (method === 'DELETE' && url.endsWith('/api/v1/users/me')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ withdrawn: true }),
+      };
+    }
+
     if (method === 'POST' && url.endsWith('/api/v1/wishes')) {
       return {
         ok: true,
@@ -73,6 +83,67 @@ function createMockGatewayFetch() {
           id: 'wish-created-1',
           createdAt: new Date().toISOString(),
         }),
+      };
+    }
+
+    if (method === 'GET' && url.includes('/api/v1/wishes/random?')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            id: 'explore-wish-1',
+            content: '올해 취업 면접 꼭 최종 합격하게 해주세요',
+            categoryCode: 'job',
+            groupId: null,
+            stoneShape: 'round',
+            stoneColor: '#A89F91',
+            pose: { x: 0, y: 0.25, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+            status: 'active',
+            bloomType: null,
+            cheerLevel: 0,
+            cheerCount: 0,
+            cheeredByMe: false,
+            isMine: false,
+            nickname: '숨겨져야할닉네임#1234',
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'explore-wish-2',
+            content: '부적절한 도배 광고 소원',
+            categoryCode: 'etc',
+            groupId: null,
+            stoneShape: 'flat',
+            stoneColor: '#8D99AE',
+            pose: { x: 0, y: 0.5, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+            status: 'active',
+            bloomType: null,
+            cheerLevel: 1,
+            cheerCount: 2,
+            cheeredByMe: false,
+            isMine: false,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/wishes/explore-wish-1/cheers')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          cheerLevel: 1,
+          levelUp: true,
+        }),
+      };
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/wishes/explore-wish-2/reports')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ reported: true }),
       };
     }
 
@@ -377,4 +448,84 @@ test('Unit 3 MyWishesController & GroupController (SCR-12 ~ SCR-16): 카테고�
   // 그룹 나가기
   const afterLeave = await groupController.leaveGroup(createdGroup.id);
   assert.equal(afterLeave.groups.length, 1);
+});
+
+test('Unit 4 ExploreWishesController (SCR-10 ~ SCR-11): 타인 소원 랜덤 둘러보기, 응원 빛 단계 상승(cheer_spark) 및 중복 신고 방지 검증', async () => {
+  const { fetchFn } = createMockGatewayFetch();
+  const container = createMsaAppContainer('http://localhost:8080', fetchFn);
+  const explore = new ExploreWishesController(container);
+
+  // 1) 랜덤 소원 카드 로드 및 공개 돌탑 익명성(displayNickname === null) 확인
+  const initial = await explore.loadRandomWishes(5);
+  assert.equal(initial.wishes.length, 2);
+  assert.equal(initial.currentWish?.id, 'explore-wish-1');
+  assert.equal(initial.currentWish?.displayNickname, null);
+
+  // 2) 첫 번째 소원 응원하기 -> 빛 단계 상승(0 -> 1) + cheer_spark 연출 이벤트 발행
+  const cheerRes = await explore.cheerWish();
+  assert.equal(cheerRes.level.level, 1);
+  assert.equal(cheerRes.levelUp, true);
+  assert.equal(explore.getState().lastEffect?.type, 'cheer_spark');
+
+  // 동일 소원 중복 응원 차단
+  await assert.rejects(() => explore.cheerWish(), /ALREADY_CHEERED/);
+
+  // 3) 다음 카드로 스와이프 후 신고 모달 열기 & 신고 제출 (SCR-11)
+  const secondWish = explore.nextWish();
+  assert.equal(secondWish?.id, 'explore-wish-2');
+
+  explore.openReportModal(secondWish);
+  assert.equal(explore.getState().reportModalOpen, true);
+
+  const afterReport = await explore.submitReport('spam', secondWish);
+  assert.equal(afterReport.reportModalOpen, false);
+  assert.equal(afterReport.wishes.length, 1); // 신고된 소원은 목록에서 즉시 제외
+  assert.ok(afterReport.reportConfirmationMessage?.includes('신고가 접수'));
+
+  // 동일 소원 중복 신고 시도 시 ALREADY_REPORTED 에러 발생
+  await assert.rejects(
+    () => explore.submitReport('spam', secondWish),
+    /ALREADY_REPORTED/
+  );
+});
+
+test('Unit 5 SettingsController (SCR-17 ~ SCR-18): 배틀태그(닉네임#태그) 변경, 일일 쿼터 보너스 충전, 게스트 소셜 연동 및 회원 탈퇴 검증', async () => {
+  const { fetchFn } = createMockGatewayFetch();
+  const container = createMsaAppContainer('http://localhost:8080', fetchFn);
+
+  await container.auth.signIn('guest');
+  const settings = new SettingsController(container, {
+    baseQuota: 5,
+    bonusQuota: 0,
+    usedCount: 3,
+  });
+
+  // 1) 초기 프로필 및 쿼터 상태 확인
+  assert.equal(settings.getState().user?.isGuest, true);
+  assert.equal(settings.getState().quota.remaining, 2);
+
+  // 2) 배틀태그(닉네임#태그) 변경 (SCR-17)
+  const updatedUser = await settings.updateNickname('제미나이#real');
+  assert.equal(updatedUser.nickname?.displayName, '제미나이#real');
+
+  // 3) 리워드 보너스 쿼터 충전 (D-018)
+  const updatedQuota = settings.grantRewardBonusQuota(2);
+  assert.equal(updatedQuota.remaining, 4);
+
+  // 4) SCR-18 게스트 계정 소셜 연동 모달 -> 카카오 계정 승격 연결
+  settings.openLinkAccountModal();
+  assert.equal(settings.getState().linkAccountModalOpen, true);
+
+  const linkedUser = await settings.linkGuestToSocial('kakao');
+  assert.equal(linkedUser.isGuest, false);
+  assert.equal(settings.getState().linkAccountModalOpen, false);
+
+  // 5) SCR-18 회원 탈퇴 확인 모달 -> 회원 탈퇴 완료
+  settings.openWithdrawModal();
+  assert.equal(settings.getState().withdrawModalOpen, true);
+
+  const afterWithdraw = await settings.withdrawAccount();
+  assert.equal(afterWithdraw.accountDeleted, true);
+  assert.equal(afterWithdraw.user, null);
+  assert.equal(afterWithdraw.withdrawModalOpen, false);
 });

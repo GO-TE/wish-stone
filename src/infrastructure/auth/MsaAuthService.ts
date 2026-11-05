@@ -18,7 +18,7 @@ interface AuthResponseDto {
 
 /**
  * Spring Boot MSA (`user-auth-service` :8081 via Gateway :8080) 인증 어댑터
- * Apple / Kakao / Google OAuth2 및 게스트 로그인, 게스트 계정 연결(`link`)을 담당한다.
+ * Apple / Kakao / Google OAuth2 및 게스트 로그인, 게스트 계정 연결(`link`), 회원 탈퇴를 담당한다.
  * 근거: API 명세서.md API-01, API-02, API-17, API-18, D-007
  */
 export class MsaAuthService implements AuthService {
@@ -68,6 +68,12 @@ export class MsaAuthService implements AuthService {
   }
 
   async signOut(): Promise<void> {
+    this.http.setAccessToken(null);
+    this.currentProfile = null;
+  }
+
+  async deleteAccount(): Promise<void> {
+    await this.http.request('DELETE', '/api/v1/users/me');
     this.http.setAccessToken(null);
     this.currentProfile = null;
   }
