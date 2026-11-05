@@ -3,6 +3,7 @@ package com.stonewish.userauth.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,8 @@ import com.stonewish.userauth.controller.UserAuthController.UserAuthExceptionHan
 import com.stonewish.userauth.service.UserAccountService.AuthTokenResult;
 import com.stonewish.userauth.service.UserAccountService.UserAccount;
 import com.stonewish.userauth.service.UserAccountService.UserAccountPort;
+import com.stonewish.userauth.service.UserAccountService.VerifiedJwtClaims;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,17 +75,31 @@ class UserAccountServiceTest {
     }
 
     @Test
-    @DisplayName("D-007 & M-06 & N-09: 게스트 계정을 소셜 계정으로 연결(link)하면 기존 userId와 닉네임#태그가 보존된 채 새 토큰({accessToken, user:{isGuest, tag}})이 직렬화된다")
-    void linkGuestToSocialPreservesUserIdAndNickname() throws Exception {
+    @DisplayName("D-007 & M-06 & N-05 & N-09: 게스트->소셜 연결 시 userId 보존, HMAC-SHA256 서명 JWT 발급 및 변조/만료 토큰 거부 검증")
+    void linkGuestToSocialPreservesUserIdAndIssuesSignedJwt() throws Exception {
         service.updateNicknameAndTag("user-1", "돌탑지기#real");
         AuthTokenResult linkedResult = controller.linkSocial("user-1", new LinkSocialRequest("kakao"));
 
         assertNotNull(linkedResult.accessToken());
-        assertEquals("uid:user-1:guest:false", linkedResult.accessToken());
-        assertEquals("user-1", linkedResult.user().id());
-        assertEquals("돌탑지기#real", linkedResult.user().displayName());
-        assertFalse(linkedResult.user().isGuest());
-        assertEquals("kakao", linkedResult.user().linkedProvider());
+        assertEquals(3, linkedResult.accessToken().split("\\.").length);
+
+        VerifiedJwtClaims verified = service.verifyToken(linkedResult.accessToken());
+        assertNotNull(verified);
+        assertEquals("user-1", verified.userId());
+        assertFalse(verified.isGuest());
+
+        // 서명 변조 시 검증 실패(null)
+        String tamperedToken = linkedResult.accessToken() + "tampered";
+        assertNull(service.verifyToken(tamperedToken));
+
+        // 만료된 토큰 검증 실패(null)
+        String expiredToken = UserAccountService.issueToken(
+            linkedResult.user(),
+            UserAccountService.DEFAULT_JWT_SECRET,
+            -10L,
+            Instant.now()
+        );
+        assertNull(service.verifyToken(expiredToken));
 
         // N-09: JSON 직렬화 시 isGuest, tag, nickname, accessToken 키 검증
         ObjectMapper mapper = new ObjectMapper();
@@ -94,12 +111,16 @@ class UserAccountServiceTest {
     }
 
     @Test
-    @DisplayName("M-06 & SCR-18 & N-04: 게스트/소셜 로그인, 내 프로필 조회, 회원 탈퇴, X-User-Id 누락 시 401 UNAUTHORIZED 검증")
+    @DisplayName("M-06 & SCR-18 & N-04 & N-05: 게스트/소셜 로그인 서명 JWT 검증, 내 프로필 조회, 회원 탈퇴, X-User-Id 누락 401 검증")
     void loginGetMeAndWithdrawAccount() throws Exception {
         AuthTokenResult loginRes = controller.login(new LoginRequest("guest"));
         String uid = loginRes.user().id();
         assertTrue(loginRes.user().isGuest());
-        assertEquals("uid:" + uid + ":guest:true", loginRes.accessToken());
+
+        VerifiedJwtClaims claims = service.verifyToken(loginRes.accessToken());
+        assertNotNull(claims);
+        assertEquals(uid, claims.userId());
+        assertTrue(claims.isGuest());
 
         UserAccount me = controller.getMe(uid);
         assertEquals(uid, me.id());
