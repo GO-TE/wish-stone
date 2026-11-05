@@ -35,10 +35,13 @@ export class MsaHttpClient {
 
   constructor(
     baseUrl = 'http://localhost:8080',
-    fetchFn: FetchLike = globalThis.fetch as unknown as FetchLike
+    fetchFn?: FetchLike
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
-    this.fetchFn = fetchFn;
+    this.fetchFn = (input, init) => {
+      const fn = fetchFn || (globalThis.fetch as unknown as FetchLike);
+      return fn.call(globalThis, input, init);
+    };
   }
 
   setAccessToken(token: string | null): void {

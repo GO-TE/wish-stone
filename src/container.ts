@@ -1,4 +1,4 @@
-import { BrowseRandomWishesUseCase } from './application/usecases/BrowseRandomWishesUseCase.ts';
+﻿import { BrowseRandomWishesUseCase } from './application/usecases/BrowseRandomWishesUseCase.ts';
 import { CheerWishUseCase } from './application/usecases/CheerWishUseCase.ts';
 import { FulfillWishUseCase } from './application/usecases/FulfillWishUseCase.ts';
 import { StackStoneUseCase } from './application/usecases/StackStoneUseCase.ts';
@@ -36,9 +36,9 @@ export interface AppDependencies {
 }
 
 /**
- * 애플리케이션 의존성 주입(DI) 컨테이너
- * 백엔드 어댑터(Supabase 또는 Spring Boot MSA)와 플랫폼 어댑터(Viro/WebXR/Overlay)를 조립한다.
- * 근거: 아키텍처 설계.md 1·2장, D-011
+ * ?좏뵆由ъ??댁뀡 ?섏〈??二쇱엯(DI) 而⑦뀒?대꼫
+ * 諛깆뿏???대뙌??Supabase ?먮뒗 Spring Boot MSA)? ?뚮옯???대뙌??Viro/WebXR/Overlay)瑜?議곕┰?쒕떎.
+ * 洹쇨굅: ?꾪궎?띿쿂 ?ㅺ퀎.md 1쨌2?? D-011
  */
 export function createAppContainer(deps: AppDependencies) {
   const effects = new EffectBus();
@@ -69,14 +69,14 @@ export function createAppContainer(deps: AppDependencies) {
 }
 
 /**
- * Spring Cloud Gateway (:8080) 백엔드와 연결된 기본 MSA 컨테이너 생성기
- */
+ * Spring Cloud Gateway (:8080) 諛깆뿏?쒖? ?곌껐??湲곕낯 MSA 而⑦뀒?대꼫 ?앹꽦湲? */
 export function createMsaAppContainer(
   gatewayBaseUrl = 'http://localhost:8080',
   fetchFn?: FetchLike,
   capabilities?: PlatformCapabilities
 ) {
-  const http = new MsaHttpClient(gatewayBaseUrl, fetchFn);
+  const safeFetch: FetchLike = (input, init) => ((fetchFn || globalThis.fetch) as unknown as FetchLike).call(globalThis, input, init);
+  const http = new MsaHttpClient(gatewayBaseUrl, safeFetch);
   const auth = new MsaAuthService(http);
   const wishes = new MsaWishRepository(http);
   const towers = new MsaTowerRepository(http);
