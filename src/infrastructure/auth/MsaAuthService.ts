@@ -55,12 +55,12 @@ export class MsaAuthService implements AuthService {
       nickname: string;
       isGuest: boolean;
     }>('PUT', '/api/v1/users/me/nickname', {
-      nickname: nickname.value,
+      nickname: nickname.displayName,
     });
 
     const updated: UserProfile = {
       id: res.id,
-      nickname: new Nickname(res.nickname),
+      nickname: new Nickname(res.nickname, nickname.tag),
       isGuest: res.isGuest,
     };
     this.currentProfile = updated;
