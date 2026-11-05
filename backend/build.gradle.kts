@@ -4,7 +4,8 @@ plugins {
     id("io.spring.dependency-management") version "1.1.6" apply false
 }
 
-extra["springCloudVersion"] = "2023.0.3"
+val springCloudVersion = "2023.0.3"
+extra["springCloudVersion"] = springCloudVersion
 
 allprojects {
     group = "com.stonewish"
@@ -32,7 +33,7 @@ subprojects {
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
             mavenBom("org.springframework.boot:spring-boot-dependencies:3.3.5")
-            mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
+            mavenBom("org.springframework.cloud:spring-cloud-dependencies:$springCloudVersion")
         }
     }
 
