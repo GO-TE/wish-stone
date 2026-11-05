@@ -9,6 +9,7 @@ import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
 import { CheerSparkEffect } from '../presentation/components/CheerSparkEffect.tsx';
 import { StoneTowerCanvas } from '../presentation/components/StoneTowerCanvas.tsx';
 import { type DashboardViewState } from '../presentation/controllers/DashboardController.ts';
+import { TossTheme } from '../presentation/theme/tossTheme.ts';
 
 const TOWER_TABS: readonly { label: string; key: TowerKey }[] = [
   { label: '전체', key: TowerKey.global() },
@@ -29,7 +30,7 @@ const CATEGORY_LABELS: Record<CategoryCode, string> = {
 
 /**
  * SCR-04 대시보드(홈) 화면 (`/home`)
- * 상단 바, 돌탑 전환 탭(전체/카테고리/그룹), 통계 바, 3D 돌탑 프리뷰, 랜덤 소원 카드 스와이프·응원하기, [돌 올리기] 버튼을 제공한다.
+ * Toss-Style Minimal Aesthetic Revamp
  * 근거: 화면 설계서.md 3장 (DB-002~007, 014~017, 022)
  */
 export default function HomeScreen() {
@@ -72,116 +73,169 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 상단 바 */}
-      <View style={styles.header}>
-        <Text style={styles.brand}>StoneWish</Text>
-        <View style={styles.headerActions}>
-          <Pressable
-            style={styles.navChip}
-            onPress={() => router.push('/groups')}
-          >
-            <Text style={styles.navChipText}>그룹</Text>
-          </Pressable>
-          <Pressable
-            style={styles.navChip}
-            onPress={() => router.push('/me/wishes')}
-          >
-            <Text style={styles.navChipText}>내소원</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* ① 돌탑 전환 탭 */}
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabBar}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {TOWER_TABS.map((tab) => {
-          const active =
-            state.currentTowerKey.toString() === tab.key.toString();
-          return (
+        {/* 상단 네비게이션 헤더 */}
+        <View style={styles.header}>
+          <View style={styles.brandGroup}>
+            <Text style={styles.brandIcon}>🪨</Text>
+            <Text style={styles.brand}>위시스톤</Text>
+          </View>
+          <View style={styles.headerActions}>
             <Pressable
-              key={tab.key.toString()}
-              style={[styles.tabButton, active && styles.tabButtonActive]}
-              onPress={() => handleSwitchTab(tab.key)}
+              style={({ pressed }) => [
+                styles.navChip,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => router.push('/groups')}
             >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                {tab.label}
-              </Text>
+              <Text style={styles.navChipText}>그룹</Text>
             </Pressable>
-          );
-        })}
-      </ScrollView>
+            <Pressable
+              style={({ pressed }) => [
+                styles.navChip,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => router.push('/me/wishes')}
+            >
+              <Text style={styles.navChipText}>내 소원</Text>
+            </Pressable>
+          </View>
+        </View>
 
-      {/* ② 통계 바 */}
-      <View style={styles.statsBar}>
-        <Text style={styles.statsText}>
-          돌 {state.tower?.stats.stoneCount ?? 0} · 오늘{' '}
-          {state.tower?.stats.todayCount ?? 0} · 🌱{' '}
-          {state.tower?.stats.fulfilledCount ?? 0}
-        </Text>
-      </View>
-
-      {/* ③ 3D 돌탑 영역 */}
-      <View style={styles.towerViewport}>
-        <StoneTowerCanvas stones={state.tower?.stones ?? []} />
-        <CheerSparkEffect
-          event={state.lastEffect}
-          towerTopY={state.tower?.topY() ?? 1.0}
-        />
-        <Text style={styles.towerTitle}>
-          {state.currentTowerKey.toString()} 돌탑 (
-          {state.tower?.stones.length ?? 0}개 렌더링)
-        </Text>
-        <Pressable
-          style={styles.arViewButton}
-          onPress={() => router.push('/stack/ar')}
-        >
-          <Text style={styles.arViewButtonText}>AR로 보기</Text>
-        </Pressable>
-      </View>
-
-      {/* ④ 랜덤 소원 카드 */}
-      <View style={styles.cardBox}>
-        {activeCard ? (
-          <>
-            <Text style={styles.cardContent}>"{activeCard.content}"</Text>
-            <View style={styles.cardFooter}>
-              <Text style={styles.cardCategory}>
-                {CATEGORY_LABELS[activeCard.category]}
+        {/* ① 토스형 통계 헤드라인 카드 */}
+        <View style={styles.statCard}>
+          <Text style={styles.statLabel}>전체 소원 돌탑</Text>
+          <View style={styles.statRow}>
+            <Text style={styles.statMainNumber}>
+              {state.tower?.stats.stoneCount ?? 0}
+            </Text>
+            <Text style={styles.statUnit}>개의 소원</Text>
+            <View style={styles.badgeToday}>
+              <Text style={styles.badgeTodayText}>
+                오늘 +{state.tower?.stats.todayCount ?? 0}
               </Text>
-              <View style={styles.cardActions}>
-                <Pressable style={styles.cheerButton} onPress={handleCheer}>
+            </View>
+          </View>
+          <Text style={styles.statFooterText}>
+            🌱 이뤄진 소원 {state.tower?.stats.fulfilledCount ?? 0}개가 함께 빛나고 있어요
+          </Text>
+        </View>
+
+        {/* ② 카테고리 전환 탭 (Pills) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBar}
+          contentContainerStyle={styles.tabContent}
+        >
+          {TOWER_TABS.map((tab) => {
+            const active =
+              state.currentTowerKey.toString() === tab.key.toString();
+            return (
+              <Pressable
+                key={tab.key.toString()}
+                style={[styles.tabButton, active && styles.tabButtonActive]}
+                onPress={() => handleSwitchTab(tab.key)}
+              >
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* ③ 3D 돌탑 프리뷰 뷰포트 */}
+        <View style={styles.towerViewport}>
+          <View style={styles.towerHeader}>
+            <Text style={styles.towerTitle}>
+              {state.currentTowerKey.toString()} 돌탑 ({state.tower?.stones.length ?? 0}개)
+            </Text>
+            <Pressable
+              style={styles.arViewButton}
+              onPress={() => router.push('/stack/ar')}
+            >
+              <Text style={styles.arViewButtonText}>👓 AR 모드</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.canvasContainer}>
+            <StoneTowerCanvas stones={state.tower?.stones ?? []} />
+            <CheerSparkEffect
+              event={state.lastEffect}
+              towerTopY={state.tower?.topY() ?? 1.0}
+            />
+          </View>
+
+          <Text style={styles.towerSubtext}>
+            터치하여 돌탑을 회전하고 소원을 살펴보세요
+          </Text>
+        </View>
+
+        {/* ④ 토스형 소원 카드 피드 */}
+        <View style={styles.cardBox}>
+          {activeCard ? (
+            <>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardCategory}>
+                  {CATEGORY_LABELS[activeCard.category]}
+                </Text>
+                <Text style={styles.cardTime}>따끈따끈한 소원</Text>
+              </View>
+
+              <Text style={styles.cardContent}>"{activeCard.content}"</Text>
+
+              <View style={styles.cardFooter}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.cheerButton,
+                    pressed && { transform: [{ scale: 0.97 }] },
+                  ]}
+                  onPress={handleCheer}
+                >
                   <Text style={styles.cheerButtonText}>
-                    🔥 응원 (단계 {activeCard.cheerLevel().level})
+                    🔥 응원하기 {activeCard.cheerLevel().level > 0 ? `Lv.${activeCard.cheerLevel().level}` : ''}
                   </Text>
                 </Pressable>
+
                 <Pressable
                   style={styles.nextCardButton}
                   onPress={() =>
                     setCardIndex((i) => (i + 1) % state.randomCards.length)
                   }
                 >
-                  <Text style={styles.nextCardText}>다음 ▸</Text>
+                  <Text style={styles.nextCardText}>다음 소원 ▸</Text>
                 </Pressable>
               </View>
-            </View>
-          </>
-        ) : (
-          <Text style={styles.emptyCardText}>
-            다른 사람들의 소원 카드를 불러오는 중입니다...
-          </Text>
-        )}
-      </View>
+            </>
+          ) : (
+            <Text style={styles.emptyCardText}>
+              소원 돌들을 불러오고 있습니다...
+            </Text>
+          )}
+        </View>
 
-      {/* ⑥ 메인 돌 올리기 버튼 */}
-      <Pressable
-        style={styles.stackMainButton}
-        onPress={() => router.push('/stack/stone')}
-      >
-        <Text style={styles.stackMainButtonText}>🪨 돌 올리기</Text>
-      </Pressable>
+        {/* 여백 확보 */}
+        <View style={{ height: 80 }} />
+      </ScrollView>
+
+      {/* ⑤ 플로팅 CTA 버튼 (Toss Blue Pill) */}
+      <View style={styles.floatingButtonContainer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.stackMainButton,
+            pressed && styles.stackMainButtonPressed,
+          ]}
+          onPress={() => router.push('/stack/stone')}
+        >
+          <Text style={styles.stackMainButtonIcon}>🪨</Text>
+          <Text style={styles.stackMainButtonText}>소원 돌 올리기</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -189,164 +243,266 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121316',
-    padding: 20,
+    backgroundColor: TossTheme.colors.background,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 20,
+  },
+  brandGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  brandIcon: {
+    fontSize: 22,
   },
   brand: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#F5EFE6',
+    ...TossTheme.typography.title,
+    color: TossTheme.colors.textPrimary,
   },
   headerActions: {
     flexDirection: 'row',
     gap: 8,
   },
   navChip: {
-    backgroundColor: '#1C1E24',
+    backgroundColor: TossTheme.colors.card,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 7,
+    borderRadius: TossTheme.radius.md,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
   },
   navChipText: {
-    color: '#D6C7B2',
-    fontSize: 13,
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
     fontWeight: '600',
   },
-  tabBar: {
-    maxHeight: 40,
-    marginBottom: 12,
+  statCard: {
+    backgroundColor: TossTheme.colors.card,
+    borderRadius: TossTheme.radius.card,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
   },
-  tabButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#1C1E24',
-    marginRight: 8,
+  statLabel: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
+    marginBottom: 6,
   },
-  tabButtonActive: {
-    backgroundColor: '#D6C7B2',
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
   },
-  tabText: {
-    color: '#A89F91',
-    fontSize: 13,
+  statMainNumber: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: TossTheme.colors.textPrimary,
+    letterSpacing: -0.5,
   },
-  tabTextActive: {
-    color: '#191919',
+  statUnit: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TossTheme.colors.primary,
+  },
+  badgeToday: {
+    marginLeft: 'auto',
+    backgroundColor: TossTheme.colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: TossTheme.radius.full,
+  },
+  badgeTodayText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.primary,
     fontWeight: '700',
   },
-  statsBar: {
-    paddingVertical: 8,
-    alignItems: 'center',
-    backgroundColor: '#181A20',
-    borderRadius: 10,
-    marginBottom: 14,
+  statFooterText: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textTertiary,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: TossTheme.colors.border,
   },
-  statsText: {
-    color: '#D6C7B2',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  towerViewport: {
-    flex: 1,
-    backgroundColor: '#181A20',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    marginBottom: 14,
-  },
-  towerEmoji: {
-    fontSize: 56,
-    marginBottom: 8,
-  },
-  towerTitle: {
-    color: '#A89F91',
-    fontSize: 14,
-    marginBottom: 10,
-  },
-  effectBadge: {
-    color: '#FFD43B',
-    fontSize: 12,
-    marginBottom: 10,
-  },
-  arViewButton: {
-    backgroundColor: '#2A2D34',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  arViewButtonText: {
-    color: '#F5EFE6',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  cardBox: {
-    backgroundColor: '#1C1E24',
-    borderRadius: 14,
-    padding: 16,
+  tabBar: {
     marginBottom: 16,
   },
-  cardContent: {
-    color: '#F5EFE6',
-    fontSize: 15,
+  tabContent: {
+    gap: 8,
+  },
+  tabButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: TossTheme.radius.button,
+    backgroundColor: TossTheme.colors.card,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
+  },
+  tabButtonActive: {
+    backgroundColor: TossTheme.colors.textPrimary,
+    borderColor: TossTheme.colors.textPrimary,
+  },
+  tabText: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#000000',
+    fontWeight: '700',
+  },
+  towerViewport: {
+    backgroundColor: TossTheme.colors.card,
+    borderRadius: TossTheme.radius.card,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
+    minHeight: 280,
+  },
+  towerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
-    lineHeight: 22,
+  },
+  towerTitle: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
+    fontWeight: '600',
+  },
+  arViewButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: TossTheme.radius.md,
+  },
+  arViewButtonText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textPrimary,
+    fontWeight: '600',
+  },
+  canvasContainer: {
+    height: 220,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  towerSubtext: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textTertiary,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  cardBox: {
+    backgroundColor: TossTheme.colors.card,
+    borderRadius: TossTheme.radius.card,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
+    marginBottom: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardCategory: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.primary,
+    fontWeight: '700',
+  },
+  cardTime: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textTertiary,
+  },
+  cardContent: {
+    ...TossTheme.typography.cardTitle,
+    color: TossTheme.colors.textPrimary,
+    lineHeight: 24,
+    marginBottom: 16,
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  cardCategory: {
-    color: '#D6C7B2',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: TossTheme.colors.border,
   },
   cheerButton: {
-    backgroundColor: '#FF922B',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    backgroundColor: TossTheme.colors.primarySoft,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: TossTheme.radius.md,
   },
   cheerButtonText: {
-    color: '#191919',
-    fontSize: 12,
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.primary,
     fontWeight: '700',
   },
   nextCardButton: {
-    backgroundColor: '#2A2D34',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
   },
   nextCardText: {
-    color: '#A89F91',
-    fontSize: 12,
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
   },
   emptyCardText: {
-    color: '#6C6860',
-    fontSize: 13,
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textTertiary,
     textAlign: 'center',
+    paddingVertical: 12,
+  },
+  floatingButtonContainer: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    right: 20,
   },
   stackMainButton: {
-    backgroundColor: '#D6C7B2',
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: TossTheme.colors.primary,
+    height: 56,
+    borderRadius: TossTheme.radius.button,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: TossTheme.colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  stackMainButtonPressed: {
+    transform: [{ scale: 0.985 }],
+    backgroundColor: TossTheme.colors.primaryHover,
+  },
+  stackMainButtonIcon: {
+    fontSize: 18,
+    marginRight: 8,
   },
   stackMainButtonText: {
-    color: '#191919',
     fontSize: 16,
     fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 });
