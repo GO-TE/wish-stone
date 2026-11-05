@@ -2,10 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type ReportReason } from '../../domain/ports/repositories.ts';
-import {
-  ExploreWishesController,
-  type ExploreWishesViewState,
-} from '../../presentation/controllers/ExploreWishesController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { type ExploreWishesViewState } from '../../presentation/controllers/ExploreWishesController.ts';
 
 const REPORT_REASONS: readonly { reason: ReportReason; label: string }[] = [
   { reason: 'abuse', label: '욕설 · 비방' },
@@ -24,7 +22,9 @@ const REPORT_REASONS: readonly { reason: ReportReason; label: string }[] = [
  */
 export default function ExploreWishesScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new ExploreWishesController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.exploreWishes
+  );
   const [state, setState] = useState<ExploreWishesViewState>(() =>
     controller.getState()
   );

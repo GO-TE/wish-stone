@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type AuthProvider } from '../domain/ports/AuthService.ts';
-import { OnboardingController } from '../presentation/controllers/OnboardingController.ts';
+import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
 
 const LOGIN_BUTTONS: readonly {
   provider: AuthProvider;
@@ -23,7 +23,9 @@ const LOGIN_BUTTONS: readonly {
  */
 export default function LoginScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new OnboardingController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.onboarding
+  );
   const [loadingProvider, setLoadingProvider] = useState<AuthProvider | null>(
     null
   );

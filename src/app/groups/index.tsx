@@ -8,10 +8,8 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import {
-  GroupController,
-  type GroupViewState,
-} from '../../presentation/controllers/GroupController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { type GroupViewState } from '../../presentation/controllers/GroupController.ts';
 
 /**
  * SCR-15 ~ SCR-16 지인 그룹 돌탑 목록·만들기·초대 코드 참여 화면 (`/groups`)
@@ -21,7 +19,9 @@ import {
  */
 export default function GroupsScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new GroupController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.groups
+  );
   const [state, setState] = useState<GroupViewState>(() =>
     controller.getState()
   );

@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import {
-  OnboardingController,
-  type OnboardingViewState,
-} from '../presentation/controllers/OnboardingController.ts';
+import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
+import { type OnboardingViewState } from '../presentation/controllers/OnboardingController.ts';
 
 /**
  * SCR-01 스플래시 화면 (`/`)
@@ -13,7 +11,9 @@ import {
  */
 export default function SplashScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new OnboardingController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.onboarding
+  );
   const [state, setState] = useState<OnboardingViewState>(() =>
     controller.getState()
   );

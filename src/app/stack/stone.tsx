@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type StoneShape } from '../../domain/entities/Stone.ts';
-import { StackStoneController } from '../../presentation/controllers/StackStoneController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 
 const STONE_SHAPES: readonly { shape: StoneShape; label: string }[] = [
   { shape: 'round', label: '둥근 조약돌' },
@@ -20,7 +20,9 @@ const STONE_COLORS = ['#A89F91', '#8D99AE', '#D6C7B2', '#6C757D', '#C9ADA7'];
  */
 export default function SelectStoneScreen() {
   const router = useRouter();
-  const [controller] = useState(() => new StackStoneController());
+  const [controller] = useState(
+    () => getSharedAppContainer().controllers.stackStone
+  );
   const [state, setState] = useState(() => controller.getState());
 
   const handleSelect = (shape: StoneShape, color: string) => {

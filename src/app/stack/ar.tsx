@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Tower } from '../../domain/entities/Tower.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
 import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
-import { StackStoneController } from '../../presentation/controllers/StackStoneController.ts';
+import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 
 /**
  * SCR-08 쌓기 (AR) 화면 (`/stack/ar`)
@@ -16,8 +16,10 @@ import { StackStoneController } from '../../presentation/controllers/StackStoneC
 export default function PlaceStoneARScreen() {
   const router = useRouter();
   const [controller] = useState(() => {
-    const c = new StackStoneController();
-    c.updateContent('AR 돌탑에 올리는 소원');
+    const c = getSharedAppContainer().controllers.stackStone;
+    if (!c.getState().content) {
+      c.updateContent('AR 돌탑에 올리는 소원');
+    }
     return c;
   });
   const [state, setState] = useState(() => controller.getState());
