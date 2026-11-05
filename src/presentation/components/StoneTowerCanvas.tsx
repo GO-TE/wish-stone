@@ -20,118 +20,48 @@ export interface StoneTowerCanvasProps {
 }
 
 /**
- * 돌 모양(shape) 및 탑 스타일에 따른 유기적인 자연석 지오메트리
+ * 돌 모양(shape) 기본 프로필
  */
 interface StoneGeometryProfile {
-  width: number;
-  height: number;
-  borderTopLeftRadius: number;
-  borderTopRightRadius: number;
-  borderBottomRightRadius: number;
-  borderBottomLeftRadius: number;
+  baseWidth: number;
+  baseHeight: number;
+  baseRadius: number;
 }
 
-const SHAPE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: {
-    width: 150,
-    height: 40,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 22,
-    borderBottomRightRadius: 18,
-    borderBottomLeftRadius: 24,
-  },
-  round: {
-    width: 124,
-    height: 50,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 28,
-    borderBottomRightRadius: 30,
-    borderBottomLeftRadius: 36,
-  },
-  tall: {
-    width: 88,
-    height: 66,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 24,
-    borderBottomLeftRadius: 26,
-  },
-  pebble: {
-    width: 78,
-    height: 34,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 22,
-    borderBottomRightRadius: 16,
-    borderBottomLeftRadius: 20,
-  },
-  boulder: {
-    width: 170,
-    height: 54,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 30,
-    borderBottomRightRadius: 22,
-    borderBottomLeftRadius: 24,
-  },
+const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
+  flat: { baseWidth: 154, baseHeight: 42, baseRadius: 24 },
+  round: { baseWidth: 126, baseHeight: 52, baseRadius: 32 },
+  tall: { baseWidth: 92, baseHeight: 68, baseRadius: 30 },
+  pebble: { baseWidth: 80, baseHeight: 36, baseRadius: 18 },
+  boulder: { baseWidth: 176, baseHeight: 56, baseRadius: 26 },
 };
 
 /**
- * 돌 고유의 암석 텍스처 유형
+ * 문자열 기반 의사 난수 해시 함수
  */
-type RockTextureType = 'moss' | 'quartz_vein' | 'basalt_pores' | 'sediment' | 'crystal' | 'smooth';
-
-function getRockTextureType(node: StoneRenderNode, index: number, style: TowerArchStyle): RockTextureType {
-  if (style === 'gem') return 'crystal';
-  if (style === 'pebble') return 'smooth';
-  
-  // cairn(적석) 모드에서는 돌마다 고유한 암석 디테일 부여
-  const pattern = (index + node.geometry.segments) % 5;
-  switch (pattern) {
-    case 0: return 'moss';          // 초록 이끼가 낀 자연석
-    case 1: return 'quartz_vein';   // 백색 석영 맥이 흐르는 화강암
-    case 2: return 'basalt_pores';  // 미세 구멍이 있는 제주 현무암
-    case 3: return 'sediment';      // 층상 퇴적 줄무늬
-    default: return 'smooth';       // 매끄러운 강돌
+function pseudoHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
   }
-}
-
-/**
- * 돌탑 스타일별 색상 보정
- */
-function resolveStoneColor(baseColor: string, texture: RockTextureType, style: TowerArchStyle, index: number): string {
-  if (style === 'gem') {
-    const gemColors = ['#5E4A7D', '#7B5E99', '#4E6B66', '#8FA89B', '#486382'];
-    return gemColors[index % gemColors.length];
-  }
-  if (style === 'pebble') {
-    const pebbleColors = ['#D1D5DB', '#9CA3AF', '#6B7280', '#A3A3A3', '#E5E7EB'];
-    return pebbleColors[index % pebbleColors.length];
-  }
-  if (texture === 'basalt_pores') return '#262930';
-  if (texture === 'moss') return '#3E4947';
-  if (texture === 'quartz_vein') return '#6E675F';
-  if (texture === 'sediment') return '#8A735E';
-  return baseColor || '#4B5563';
+  return Math.abs(hash);
 }
 
 /**
  * 층(Tier) 단위 다석 적층 구조 모델
- * 한 층에 여러 개의 돌이 나란히 포개어질 수 있습니다.
  */
 interface StoneTier {
   tierIndex: number;
   stones: StoneRenderNode[];
 }
 
-/**
- * 전통 적석 케언 알고리즘:
- * - 바닥단(기초)은 2~3개의 돌이 안정적인 주춧돌을 형성
- * - 중간단은 그 사이 골(Valley)에 1~2개의 돌이 안착
- * - 상단은 1개의 돌로 모아지며 균형을 이룸
- */
-function organizeTowerTiers(nodes: StoneRenderNode[], style: TowerArchStyle): StoneTier[] {
+function organizeTowerTiers(
+  nodes: StoneRenderNode[],
+  style: TowerArchStyle
+): StoneTier[] {
   if (nodes.length === 0) return [];
 
-  // 조약돌(Pebble/Zen) 모드: 1개씩 단독으로 아슬아슬하게 균형 잡는 1D 젠 타워
   if (style === 'pebble') {
     return nodes.map((node, i) => ({
       tierIndex: i,
@@ -139,13 +69,12 @@ function organizeTowerTiers(nodes: StoneRenderNode[], style: TowerArchStyle): St
     }));
   }
 
-  // 전통 적석 돌탑(Cairn) 및 보석탑(Gem): 층마다 1~3개씩 복합 적층
   const n = nodes.length;
   let tierSizes: number[] = [];
 
   if (n === 1) tierSizes = [1];
-  else if (n === 2) tierSizes = [2]; // 2개일 때: 나란히 2개의 기초 받침돌 형성
-  else if (n === 3) tierSizes = [2, 1]; // 3개일 때: 기초 2개 + 위 1개 (삼각 적석 구조)
+  else if (n === 2) tierSizes = [2];
+  else if (n === 3) tierSizes = [2, 1];
   else if (n === 4) tierSizes = [2, 1, 1];
   else if (n === 5) tierSizes = [2, 2, 1];
   else if (n === 6) tierSizes = [3, 2, 1];
@@ -183,9 +112,9 @@ function organizeTowerTiers(nodes: StoneRenderNode[], style: TowerArchStyle): St
 
 /**
  * 3D 돌탑 캔버스 컴포넌트 (`SCR-04`, `SCR-07`, `SCR-10`)
- * - 한 층에 1~3개의 돌이 안정적으로 나란히 포개어지는 전통 복합 적석 돌탑 구현
- * - 조약돌탑(Pebble), 적석탑(Cairn), 보석원석탑(Gem) 스타일 실시간 전환
- * - 이끼(Moss), 석영 맥(Quartz Vein), 현무암 기공(Pores), 층상 퇴적선(Sediment) 등 실감 텍스처 구현
+ * - 한 층에 여러 돌이 포개어지는 복합 적석탑 / 젠 조약돌탑 / 원석탑
+ * - [신규] '생김새 랜덤 변형(Re-roll)': 돌마다 고유한 무작위 유기적 곡면 및 버튼 클릭 시 실시간 외형 재편
+ * - [신규] '이끼 & 꽃 전체 덮기 (Lush Moss & Wildflower Blanket)': 돌탑 전체를 자연의 푸른 이끼와 들꽃/새싹으로 포근하게 감싸는 연출
  */
 export function StoneTowerCanvas({
   stones,
@@ -197,11 +126,21 @@ export function StoneTowerCanvas({
   const [towerStyle, setTowerStyle] = useState<TowerArchStyle>(defaultStyle);
   const [selectedNode, setSelectedNode] = useState<StoneRenderNode | null>(null);
 
+  // 생김새 랜덤 변형 시드 (클릭할 때마다 돌들의 외형·각도·라운딩이 무작위로 재배치)
+  const [randomSeed, setRandomSeed] = useState(42);
+
+  // 전체 이끼 & 들꽃 덮기 토글 (기본 활성화)
+  const [lushMossEnabled, setLushMossEnabled] = useState(true);
+
   const tiers = organizeTowerTiers(nodes, towerStyle);
 
   const handleStonePress = (node: StoneRenderNode) => {
     setSelectedNode(node);
     onSelectStone?.(node.id);
+  };
+
+  const handleReroll = () => {
+    setRandomSeed((prev) => (prev * 1664525 + 1013904223) % 100000);
   };
 
   return (
@@ -211,54 +150,80 @@ export function StoneTowerCanvas({
         collapsedShake && styles.collapsedShakeBorder,
       ]}
     >
-      {/* 상단 돌탑 스타일 전환 토글 칩 */}
-      <View style={styles.styleSelector}>
-        <Pressable
-          style={[
-            styles.styleChip,
-            towerStyle === 'cairn' && styles.styleChipActive,
-          ]}
-          onPress={() => setTowerStyle('cairn')}
-        >
-          <Text
+      {/* 컨트롤 패널 1: 돌탑 유형 전환 (적석탑 / 조약돌탑 / 보석탑) */}
+      <View style={styles.topControlRow}>
+        <View style={styles.styleSelector}>
+          <Pressable
             style={[
-              styles.styleChipText,
-              towerStyle === 'cairn' && styles.styleChipTextActive,
+              styles.styleChip,
+              towerStyle === 'cairn' && styles.styleChipActive,
             ]}
+            onPress={() => setTowerStyle('cairn')}
           >
-            🏔️ 복합 적석탑
-          </Text>
+            <Text
+              style={[
+                styles.styleChipText,
+                towerStyle === 'cairn' && styles.styleChipTextActive,
+              ]}
+            >
+              🏔️ 복합 적석탑
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.styleChip,
+              towerStyle === 'pebble' && styles.styleChipActive,
+            ]}
+            onPress={() => setTowerStyle('pebble')}
+          >
+            <Text
+              style={[
+                styles.styleChipText,
+                towerStyle === 'pebble' && styles.styleChipTextActive,
+              ]}
+            >
+              🧘 선 조약돌탑
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.styleChip,
+              towerStyle === 'gem' && styles.styleChipActive,
+            ]}
+            onPress={() => setTowerStyle('gem')}
+          >
+            <Text
+              style={[
+                styles.styleChipText,
+                towerStyle === 'gem' && styles.styleChipTextActive,
+              ]}
+            >
+              💎 원석 보석탑
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* 컨트롤 패널 2: 생김새 랜덤 변형 & 이끼/꽃 덮기 토글 */}
+      <View style={styles.subControlRow}>
+        <Pressable style={styles.actionPill} onPress={handleReroll}>
+          <Text style={styles.actionPillText}>🎲 돌 모양 무작위 변형</Text>
         </Pressable>
+
         <Pressable
           style={[
-            styles.styleChip,
-            towerStyle === 'pebble' && styles.styleChipActive,
+            styles.actionPill,
+            lushMossEnabled && styles.actionPillMossActive,
           ]}
-          onPress={() => setTowerStyle('pebble')}
+          onPress={() => setLushMossEnabled((v) => !v)}
         >
           <Text
             style={[
-              styles.styleChipText,
-              towerStyle === 'pebble' && styles.styleChipTextActive,
+              styles.actionPillText,
+              lushMossEnabled && styles.actionPillMossActiveText,
             ]}
           >
-            🧘 선 조약돌탑
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.styleChip,
-            towerStyle === 'gem' && styles.styleChipActive,
-          ]}
-          onPress={() => setTowerStyle('gem')}
-        >
-          <Text
-            style={[
-              styles.styleChipText,
-              towerStyle === 'gem' && styles.styleChipTextActive,
-            ]}
-          >
-            💎 원석 보석탑
+            {lushMossEnabled ? '🌿 이끼·꽃 덮기: 켬' : '🌿 이끼·꽃 덮기: 끔'}
           </Text>
         </Pressable>
       </View>
@@ -276,15 +241,14 @@ export function StoneTowerCanvas({
         </View>
       ) : (
         <View style={styles.towerStage}>
-          {/* 상단 꼭대기 빛 파티클 */}
+          {/* 꼭대기 은은한 소원 파티클 */}
           <View style={styles.topSparkleContainer}>
             <Text style={styles.topSparkle}>✨</Text>
           </View>
 
-          {/* 물리적 돌탑: 바닥단부터 위로 쌓이도록 column-reverse 배치 */}
+          {/* 돌탑 적층 뷰포트 (바닥단부터 위로 column-reverse) */}
           <View style={styles.stackedTiersColumn}>
             {tiers.map((tier, tIdx) => {
-              const isBaseTier = tIdx === 0;
               return (
                 <View
                   key={`tier-${tier.tierIndex}`}
@@ -296,34 +260,51 @@ export function StoneTowerCanvas({
                 >
                   {tier.stones.map((node, sIdx) => {
                     const globalIdx = nodes.findIndex((n) => n.id === node.id);
-                    const texture = getRockTextureType(node, globalIdx, towerStyle);
-                    const resolvedColor = resolveStoneColor(
-                      node.material.baseColor,
-                      texture,
-                      towerStyle,
-                      globalIdx
-                    );
-                    const rawProfile =
-                      SHAPE_PROFILES[node.geometry.shape] ?? SHAPE_PROFILES.round;
+                    const hash = pseudoHash(`${node.id}-${randomSeed}-${globalIdx}`);
 
-                    // 한 층에 돌이 2~3개 있을 때 폭을 자연스럽게 조정
+                    const rawProfile =
+                      SHAPE_BASE_PROFILES[node.geometry.shape] ??
+                      SHAPE_BASE_PROFILES.round;
+
+                    // 1. 유기적인 랜덤 크기 변형 (폭·높이 ±18% 지터)
+                    const widthJitter = 0.85 + (hash % 30) / 100;
+                    const heightJitter = 0.85 + ((hash >> 3) % 30) / 100;
+
                     const scaleFactor =
                       tier.stones.length === 1
                         ? 1.0
                         : tier.stones.length === 2
-                        ? 0.78
+                        ? 0.76
                         : 0.62;
 
-                    const width = Math.round(rawProfile.width * scaleFactor);
-                    const height = Math.round(rawProfile.height * scaleFactor);
+                    const width = Math.round(
+                      rawProfile.baseWidth * scaleFactor * widthJitter
+                    );
+                    const height = Math.round(
+                      rawProfile.baseHeight * scaleFactor * heightJitter
+                    );
+
+                    // 2. 비대칭 랜덤 모서리 곡률 (각 모서리마다 독특한 조약돌 곡면 생성)
+                    const rTL = 16 + (hash % 28);
+                    const rTR = 14 + ((hash >> 2) % 28);
+                    const rBR = 14 + ((hash >> 4) % 24);
+                    const rBL = 16 + ((hash >> 6) % 26);
+
+                    // 3. 미세한 랜덤 틸트 각도 (-4° ~ +4°)
+                    const tiltDegree = `${((hash >> 5) % 9) - 4}deg`;
 
                     const isSelected = selectedNode?.id === node.id;
                     const hasGlow = node.material.emissiveIntensity > 0;
 
-                    // 자연스러운 비대칭 틸트
-                    const tiltDegree = `${
-                      ((globalIdx * 7 + sIdx * 5 + 3) % 7) - 3
-                    }deg`;
+                    // 색상 결정 (보석/조약돌/자연석)
+                    let stoneColor = node.material.baseColor;
+                    if (towerStyle === 'gem') {
+                      const gemColors = ['#5E4A7D', '#7B5E99', '#4E6B66', '#8FA89B', '#486382'];
+                      stoneColor = gemColors[globalIdx % gemColors.length];
+                    } else if (towerStyle === 'pebble') {
+                      const pebbleColors = ['#D1D5DB', '#A8B0BC', '#717A8A', '#949DAA', '#E5E7EB'];
+                      stoneColor = pebbleColors[globalIdx % pebbleColors.length];
+                    }
 
                     return (
                       <View
@@ -333,7 +314,7 @@ export function StoneTowerCanvas({
                           tier.stones.length > 1 && styles.horizontalNestle,
                         ]}
                       >
-                        {/* 소원 이뤄짐 데코레이션 (꽃/새싹) */}
+                        {/* 소원 이뤄짐 데코레이션 */}
                         {node.decoration ? (
                           <View style={styles.bloomBadge}>
                             <Text style={styles.bloomEmoji}>
@@ -349,11 +330,11 @@ export function StoneTowerCanvas({
                             {
                               width,
                               height,
-                              borderTopLeftRadius: rawProfile.borderTopLeftRadius,
-                              borderTopRightRadius: rawProfile.borderTopRightRadius,
-                              borderBottomRightRadius: rawProfile.borderBottomRightRadius,
-                              borderBottomLeftRadius: rawProfile.borderBottomLeftRadius,
-                              backgroundColor: resolvedColor,
+                              borderTopLeftRadius: rTL,
+                              borderTopRightRadius: rTR,
+                              borderBottomRightRadius: rBR,
+                              borderBottomLeftRadius: rBL,
+                              backgroundColor: stoneColor,
                               transform: [
                                 { rotate: tiltDegree },
                                 { scale: pressed ? 0.96 : isSelected ? 1.06 : 1 },
@@ -374,32 +355,35 @@ export function StoneTowerCanvas({
                           {/* 1. 상단 자연광 하이라이트 층 */}
                           <View style={styles.stoneSurfaceHighlight} />
 
-                          {/* 2. 돌 특유의 질감 디테일 (이끼/석영맥/현무암기공/퇴적선/결정) */}
-                          {texture === 'moss' && (
-                            <View style={styles.mossCap}>
-                              <View style={styles.mossDot1} />
-                              <View style={styles.mossDot2} />
+                          {/* 2. [신규] 전체를 포근하게 덮는 풍성한 이끼 & 들꽃 블랭킷 */}
+                          {lushMossEnabled && (
+                            <View style={styles.mossBlanketLayer}>
+                              {/* 상단 전면 이끼 망토 */}
+                              <View
+                                style={[
+                                  styles.mossMantle,
+                                  {
+                                    width: Math.round(width * 0.85),
+                                    borderTopLeftRadius: rTL,
+                                    borderTopRightRadius: rTR,
+                                  },
+                                ]}
+                              >
+                                <View style={styles.mossLobe1} />
+                                <View style={styles.mossLobe2} />
+                                <View style={styles.mossLobe3} />
+                              </View>
+
+                              {/* 돌 틈새에 피어난 들꽃 & 새싹 디테일 */}
+                              {(globalIdx + sIdx) % 2 === 0 ? (
+                                <Text style={styles.creviceFlower}>🌸</Text>
+                              ) : (
+                                <Text style={styles.creviceSprout}>🌱</Text>
+                              )}
+                              {globalIdx % 3 === 0 && (
+                                <Text style={styles.creviceFlower2}>🌼</Text>
+                              )}
                             </View>
-                          )}
-
-                          {texture === 'quartz_vein' && (
-                            <View style={styles.quartzStreak} />
-                          )}
-
-                          {texture === 'basalt_pores' && (
-                            <View style={styles.basaltPoresCluster}>
-                              <View style={styles.pore1} />
-                              <View style={styles.pore2} />
-                              <View style={styles.pore3} />
-                            </View>
-                          )}
-
-                          {texture === 'sediment' && (
-                            <View style={styles.sedimentBands} />
-                          )}
-
-                          {texture === 'crystal' && (
-                            <View style={styles.crystalGleam} />
                           )}
                         </Pressable>
                       </View>
@@ -415,7 +399,7 @@ export function StoneTowerCanvas({
             <View
               style={[
                 styles.groundShadow,
-                { width: tiers[0]?.stones.length > 1 ? 240 : 190 },
+                { width: tiers[0]?.stones.length > 1 ? 250 : 190 },
               ]}
             />
           </View>
@@ -456,10 +440,13 @@ const styles = StyleSheet.create({
     borderColor: '#FF6B6B',
     borderRadius: 16,
   },
+  topControlRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
   styleSelector: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 12,
   },
   styleChip: {
     paddingHorizontal: 10,
@@ -480,6 +467,32 @@ const styles = StyleSheet.create({
   },
   styleChipTextActive: {
     color: '#3182F6',
+    fontWeight: '700',
+  },
+  subControlRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  actionPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  actionPillText: {
+    color: '#A8AFBA',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  actionPillMossActive: {
+    backgroundColor: 'rgba(46, 125, 50, 0.22)',
+    borderColor: '#4CAF50',
+  },
+  actionPillMossActiveText: {
+    color: '#81C784',
     fontWeight: '700',
   },
   towerStage: {
@@ -506,7 +519,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tierOverlap: {
-    marginTop: -10, // 층과 층 사이가 물리적으로 포개어지도록 음수 마진
+    marginTop: -10,
   },
   stoneWrapper: {
     alignItems: 'center',
@@ -514,14 +527,13 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   horizontalNestle: {
-    marginHorizontal: -5, // 한 층에 여러 돌이 있을 때 자연스럽게 기대어지는 음수 마진
+    marginHorizontal: -5,
   },
   stonePebble: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
     overflow: 'hidden',
-    // 3D 조명 하이라이트 & 앰비언트 그림자
     borderTopWidth: 2.5,
     borderTopColor: 'rgba(255, 255, 255, 0.42)',
     borderBottomWidth: 3.5,
@@ -530,7 +542,6 @@ const styles = StyleSheet.create({
     borderLeftColor: 'rgba(255, 255, 255, 0.15)',
     borderRightWidth: 1.5,
     borderRightColor: 'rgba(0, 0, 0, 0.3)',
-    // 자연스러운 드리움 그림자
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
@@ -555,85 +566,74 @@ const styles = StyleSheet.create({
     borderColor: '#FFD43B',
     borderWidth: 2,
   },
-  /* 텍스처 1: 이끼 패치 */
-  mossCap: {
+  /* ============================================== */
+  /* 풍성한 이끼 & 들꽃 전체 덮개 레이어            */
+  /* ============================================== */
+  mossBlanketLayer: {
     position: 'absolute',
-    top: -2,
-    right: 8,
-    flexDirection: 'row',
-    gap: 2,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
   },
-  mossDot1: {
+  mossMantle: {
+    position: 'absolute',
+    top: 0,
+    left: '8%',
+    height: 12,
+    backgroundColor: '#38761D',
+    opacity: 0.88,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 8,
+  },
+  mossLobe1: {
+    position: 'absolute',
+    bottom: -4,
+    left: 6,
     width: 14,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#439A28',
+  },
+  mossLobe2: {
+    position: 'absolute',
+    bottom: -5,
+    left: 24,
+    width: 18,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2E7D32',
+  },
+  mossLobe3: {
+    position: 'absolute',
+    bottom: -3,
+    right: 8,
+    width: 12,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#529642',
-    opacity: 0.85,
-  },
-  mossDot2: {
-    width: 9,
-    height: 5,
-    borderRadius: 2.5,
     backgroundColor: '#68B04D',
-    opacity: 0.75,
   },
-  /* 텍스처 2: 백색 석영 맥 */
-  quartzStreak: {
+  creviceFlower: {
     position: 'absolute',
-    top: 10,
-    left: 8,
-    width: '75%',
-    height: 1.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-    transform: [{ rotate: '-14deg' }],
-  },
-  /* 텍스처 3: 현무암 기공 구멍들 */
-  basaltPoresCluster: {
-    position: 'absolute',
-    top: 8,
-    left: 12,
-    flexDirection: 'row',
-    gap: 5,
-  },
-  pore1: {
-    width: 3.5,
-    height: 3.5,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  pore2: {
-    width: 2.5,
-    height: 2.5,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    marginTop: 6,
-  },
-  pore3: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    marginLeft: 8,
-  },
-  /* 텍스처 4: 퇴적암 줄무늬 */
-  sedimentBands: {
-    position: 'absolute',
-    top: 14,
-    left: 4,
+    top: 1,
     right: 4,
-    height: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    fontSize: 10,
+    opacity: 0.95,
   },
-  /* 텍스처 5: 보석 결정 광채 */
-  crystalGleam: {
+  creviceFlower2: {
     position: 'absolute',
-    top: 5,
-    left: '25%',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    transform: [{ rotate: '45deg' }, { scaleX: 0.5 }],
+    bottom: 3,
+    left: 6,
+    fontSize: 9,
+    opacity: 0.9,
+  },
+  creviceSprout: {
+    position: 'absolute',
+    top: 1,
+    left: 4,
+    fontSize: 11,
+    opacity: 0.95,
   },
   bloomBadge: {
     position: 'absolute',
