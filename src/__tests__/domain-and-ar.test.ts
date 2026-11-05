@@ -36,10 +36,6 @@ class InMemoryWishRepository implements WishRepository {
     return [];
   }
 
-  async getById(): Promise<Wish | null> {
-    return null;
-  }
-
   async mine(): Promise<Wish[]> {
     return [];
   }

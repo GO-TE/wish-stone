@@ -59,11 +59,18 @@ export class MsaAuthService implements AuthService {
       displayName?: string | null;
       isGuest: boolean;
     }>('PUT', '/api/v1/users/me/nickname', {
-      nickname: nickname.displayName,
+      nickname: nickname.toRequestPayload(),
     });
 
     const rawNick = res.displayName ?? res.nickname;
-    const explicitTag = res.tag ?? (rawNick.includes('#') ? undefined : nickname.tag);
+    const explicitTag =
+      res.tag ??
+      (rawNick.includes('#')
+        ? undefined
+        : nickname.hasExplicitTag
+          ? nickname.tag
+          : undefined);
+
     const updated: UserProfile = {
       id: res.id,
       nickname: new Nickname(rawNick, explicitTag),

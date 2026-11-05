@@ -29,7 +29,6 @@ export interface WishRepository {
   create(input: NewWishInput): Promise<WishId>;
   updateCategory?(id: WishId, category: CategoryCode): Promise<void>;
   random(count: number, excludeIds: readonly WishId[]): Promise<Wish[]>;
-  getById(id: WishId): Promise<Wish | null>;
   mine(filter?: WishStatus): Promise<Wish[]>;
   cheer(id: WishId): Promise<{ level: CheerLevel; levelUp: boolean }>;
   report(id: WishId, reason: ReportReason): Promise<void>;

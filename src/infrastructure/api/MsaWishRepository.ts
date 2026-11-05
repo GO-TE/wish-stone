@@ -91,14 +91,6 @@ export class MsaWishRepository implements WishRepository {
     return list.map((dto) => this.toDomain(dto, false));
   }
 
-  async getById(id: WishId): Promise<Wish | null> {
-    const dto = await this.http.request<WishDto | null>(
-      'GET',
-      `/api/v1/wishes/${encodeURIComponent(id)}`
-    );
-    return dto ? this.toDomain(dto, false) : null;
-  }
-
   async mine(filter?: WishStatus): Promise<Wish[]> {
     const query = filter ? `?status=${encodeURIComponent(filter)}` : '';
     const list = await this.http.request<WishDto[]>(

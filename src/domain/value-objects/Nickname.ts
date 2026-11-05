@@ -8,6 +8,7 @@ const TAG_REGEX = /^[a-zA-Z0-9가-힣]{2,10}$/;
 export class Nickname {
   readonly value: string;
   readonly tag: string;
+  readonly hasExplicitTag: boolean;
 
   constructor(rawInput: string, explicitTag?: string) {
     const trimmed = rawInput.trim();
@@ -28,7 +29,8 @@ export class Nickname {
       throw new Error('NICKNAME_INVALID');
     }
 
-    if (tagPart.length === 0) {
+    const isExplicit = tagPart.length > 0;
+    if (!isExplicit) {
       tagPart = '0000';
     } else if (!TAG_REGEX.test(tagPart)) {
       throw new Error('TAG_INVALID');
@@ -36,6 +38,16 @@ export class Nickname {
 
     this.value = nickPart;
     this.tag = tagPart;
+    this.hasExplicitTag = isExplicit;
+  }
+
+  /**
+   * 서버(API-01)로 전송할 요청 문자열:
+   * - 사용자가 태그를 명시적으로 입력한 경우 `닉네임#태그` 전송
+   * - 태그를 생략한 경우 `닉네임`만 전송하여 백엔드가 4자리 숫자 태그를 자동 생성하도록 위임 (D-015)
+   */
+  toRequestPayload(): string {
+    return this.hasExplicitTag ? this.displayName : this.value;
   }
 
   get displayName(): string {

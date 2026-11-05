@@ -4,6 +4,21 @@ import { type VisualEffectEvent } from '../../domain/ports/EffectBus.ts';
 import { type ReportReason } from '../../domain/ports/repositories.ts';
 import { CheerLevel } from '../../domain/value-objects/CheerLevel.ts';
 
+function extractErrorCode(err: unknown): string {
+  if (err && typeof err === 'object') {
+    if ('code' in err && typeof (err as { code?: unknown }).code === 'string') {
+      return (err as { code: string }).code;
+    }
+    if (
+      'message' in err &&
+      typeof (err as { message?: unknown }).message === 'string'
+    ) {
+      return (err as { message: string }).message;
+    }
+  }
+  return 'UNKNOWN_ERROR';
+}
+
 export interface ExploreWishesViewState {
   readonly wishes: readonly Wish[];
   readonly currentIndex: number;
@@ -86,6 +101,7 @@ export class ExploreWishesController {
 
   /**
    * SCR-10 소원 응원하기 (`1/5/15` 빛 단계 변화 + `cheer_spark` 연출 발행)
+   * 서버에서 `ALREADY_CHEERED` 에러가 반환된 경우에도 로컬 `cheeredSet`에 반영해 버튼 비활성화 상태를 동기화한다.
    */
   async cheerWish(
     wish: Wish | null = this.state.currentWish
@@ -97,21 +113,37 @@ export class ExploreWishesController {
       throw new Error('ALREADY_CHEERED');
     }
 
-    const res = await this.app.useCases.cheerWish.execute(wish);
-    this.cheeredSet.add(wish.id);
+    try {
+      const res = await this.app.useCases.cheerWish.execute(wish);
+      this.cheeredSet.add(wish.id);
 
-    this.app.effects.emit({
-      type: 'cheer_spark',
-      wishId: wish.id,
-      level: res.level.level,
-      levelUp: res.levelUp,
-    });
+      this.app.effects.emit({
+        type: 'cheer_spark',
+        wishId: wish.id,
+        level: res.level.level,
+        levelUp: res.levelUp,
+      });
 
-    this.state = {
-      ...this.state,
-      cheeredWishIds: [...this.cheeredSet],
-    };
-    return res;
+      this.state = {
+        ...this.state,
+        cheeredWishIds: [...this.cheeredSet],
+      };
+      return res;
+    } catch (err) {
+      const code = extractErrorCode(err);
+      if (code === 'ALREADY_CHEERED') {
+        this.cheeredSet.add(wish.id);
+        this.state = {
+          ...this.state,
+          cheeredWishIds: [...this.cheeredSet],
+        };
+        return {
+          level: wish.cheerLevel(),
+          levelUp: false,
+        };
+      }
+      throw err;
+    }
   }
 
   /**
@@ -140,6 +172,7 @@ export class ExploreWishesController {
 
   /**
    * SCR-11 부적절 소원 신고 제출 (중복 신고 방지 + 확인 메시지 및 목록 숨김 처리, DB-018, API-08)
+   * 서버가 `ALREADY_REPORTED` (409) 에러를 반환하더라도 이미 신고된 소원으로 간주하여 `reportedSet`에 추가하고 카드를 숨긴다.
    */
   async submitReport(
     reason: ReportReason,
@@ -153,10 +186,17 @@ export class ExploreWishesController {
       throw new Error('ALREADY_REPORTED');
     }
 
-    if (this.app.repositories.wishes.reportWish) {
-      await this.app.repositories.wishes.reportWish(targetWish.id, reason);
-    } else {
-      await this.app.repositories.wishes.report(targetWish.id, reason);
+    try {
+      if (this.app.repositories.wishes.reportWish) {
+        await this.app.repositories.wishes.reportWish(targetWish.id, reason);
+      } else {
+        await this.app.repositories.wishes.report(targetWish.id, reason);
+      }
+    } catch (err) {
+      const code = extractErrorCode(err);
+      if (code !== 'ALREADY_REPORTED') {
+        throw err;
+      }
     }
 
     this.reportedSet.add(targetWish.id);

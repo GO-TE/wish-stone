@@ -649,3 +649,104 @@ test('QA Contract Defensive Fixes (M-02, M-04, M-06, M-08): 서버 발급 tag �
   assert.equal(tower.stones[0].status, 'active');
   assert.equal(tower.stones[0].stone.pose.position.x, 0);
 });
+
+test('QA Re-verification (N-01, N-02, N-03): 태그 미입력 시 #0000 없이 순수 닉네임만 전송해 서버 자동 태그를 부여받고, 서버 ALREADY_REPORTED/ALREADY_CHEERED 응답 시 우아하게 상태를 동기화한다', async () => {
+  const sentNicknameBodies: string[] = [];
+
+  const nFetch = async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+
+    if (method === 'PUT' && url.endsWith('/api/v1/users/me/nickname')) {
+      const requested = (body as { nickname: string }).nickname;
+      sentNicknameBodies.push(requested);
+      const hasHash = requested.includes('#');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'user-n1',
+          nickname: hasHash ? requested.split('#')[0] : requested,
+          tag: hasHash ? requested.split('#')[1] : '8392',
+          isGuest: false,
+        }),
+      };
+    }
+
+    if (url.includes('/api/v1/wishes/random')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            id: 'wish-server-dup-1',
+            content: '다른 기기에서 이미 응원/신고한 소원',
+            categoryCode: 'job',
+            groupId: null,
+            stoneShape: 'round',
+            stoneColor: '#A89F91',
+            status: 'ACTIVE',
+            bloomType: null,
+            cheerLevel: 2,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/wishes/wish-server-dup-1/cheers')) {
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({
+          code: 'ALREADY_CHEERED',
+          message: '이미 응원한 소원입니다.',
+        }),
+      };
+    }
+
+    if (method === 'POST' && url.endsWith('/api/v1/wishes/wish-server-dup-1/reports')) {
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({
+          code: 'ALREADY_REPORTED',
+          message: '이미 신고한 소원입니다.',
+        }),
+      };
+    }
+
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+
+  const container = createMsaAppContainer('http://localhost:8080', nFetch);
+  const onboarding = new OnboardingController(container.auth);
+  const settings = new SettingsController(container);
+
+  // N-01: 태그 미입력('민수') 시 서버에 '민수#0000'이 아닌 '민수'만 전송하고 서버 자동 생성 태그('8392')를 적용한다
+  const autoTagState = await onboarding.submitNickname('민수');
+  assert.equal(sentNicknameBodies[0], '민수');
+  assert.equal(autoTagState.user?.nickname?.displayName, '민수#8392');
+
+  // N-01: 태그 명시('민수#real') 시 서버에 '민수#real'을 전송한다
+  const explicitProfile = await settings.updateNickname('민수#real');
+  assert.equal(sentNicknameBodies[1], '민수#real');
+  assert.equal(explicitProfile.nickname?.displayName, '민수#real');
+
+  // N-02: 서버에서 ALREADY_CHEERED(409)가 반환될 때 예외로 죽지 않고 cheeredWishIds에 반영한다
+  const explore = new ExploreWishesController(container);
+  await explore.loadRandomWishes(1);
+  const cheerFallback = await explore.cheerWish();
+  assert.equal(cheerFallback.levelUp, false);
+  assert.equal(cheerFallback.level.level, 2);
+  assert.ok(explore.getState().cheeredWishIds.includes('wish-server-dup-1'));
+
+  // N-02: 서버에서 ALREADY_REPORTED(409)가 반환될 때 reportedWishIds에 추가하고 카드를 목록에서 숨긴다
+  const reportFallbackState = await explore.submitReport('spam');
+  assert.ok(reportFallbackState.reportedWishIds.includes('wish-server-dup-1'));
+  assert.equal(reportFallbackState.wishes.length, 0);
+  assert.equal(reportFallbackState.reportModalOpen, false);
+
+  // N-03: 미사용 getById 메서드가 제거되었는지 확인
+  assert.equal('getById' in container.repositories.wishes, false);
+});
