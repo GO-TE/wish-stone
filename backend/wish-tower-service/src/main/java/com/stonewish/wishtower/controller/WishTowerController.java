@@ -4,12 +4,14 @@ import com.stonewish.wishtower.service.DailyWishQuotaService;
 import com.stonewish.wishtower.service.DailyWishQuotaService.QuotaState;
 import com.stonewish.wishtower.service.TowerQueryService;
 import com.stonewish.wishtower.service.TowerQueryService.AnonymousWishCard;
+import com.stonewish.wishtower.service.TowerQueryService.CategoryItem;
 import com.stonewish.wishtower.service.TowerQueryService.CollapseMetadata;
 import com.stonewish.wishtower.service.TowerQueryService.FulfillWishResult;
 import com.stonewish.wishtower.service.TowerQueryService.MyWishView;
 import com.stonewish.wishtower.service.TowerQueryService.StonePose;
 import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
 import com.stonewish.wishtower.service.TowerQueryService.TowerViewResponse;
+import com.stonewish.wishtower.service.TowerQueryService.WishInternalSummary;
 import com.stonewish.wishtower.service.WishCommandService;
 import com.stonewish.wishtower.service.WishCommandService.CreateWishCommand;
 import com.stonewish.wishtower.service.WishCommandService.WishRecord;
@@ -261,6 +263,22 @@ public class WishTowerController {
     ) {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         return quotaService.grantBonusQuota(userId, today, req.bonusAmount());
+    }
+
+    /**
+     * API-16: 소원 카테고리 목록 조회 (GET /api/v1/categories)
+     */
+    @GetMapping("/api/v1/categories")
+    public List<CategoryItem> getCategories() {
+        return towerQueryService.getCategories();
+    }
+
+    /**
+     * 내부 Feign 전용 API: 응원/신고 검증용 소원 요약 조회 (GET /internal/wishes/{wishId}/summary)
+     */
+    @GetMapping("/internal/wishes/{wishId}/summary")
+    public WishInternalSummary getWishSummary(@PathVariable("wishId") String wishId) {
+        return towerQueryService.getWishSummary(wishId);
     }
 
     @RestControllerAdvice(assignableTypes = WishTowerController.class)

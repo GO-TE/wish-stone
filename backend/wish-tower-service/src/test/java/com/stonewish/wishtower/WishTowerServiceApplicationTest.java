@@ -74,5 +74,11 @@ class WishTowerServiceApplicationTest {
 
         TowerViewResponse tower = wishTowerController.getTower("global", "boot-user-1", 200);
         assertThat(tower.stones()).isNotEmpty();
+
+        // 5) API-16 카테고리 목록 조회 (categories 테이블 시딩 확인)
+        assertThat(wishTowerController.getCategories()).hasSize(5);
+
+        // 6) 내부 Feign 요약 조회 (GET /internal/wishes/{wishId}/summary) 확인
+        assertThat(wishTowerController.getWishSummary(created.id()).authorId()).isEqualTo("boot-user-1");
     }
 }

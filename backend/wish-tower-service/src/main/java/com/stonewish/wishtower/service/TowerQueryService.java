@@ -173,6 +173,26 @@ public class TowerQueryService {
         long remainingStoneCount
     ) {}
 
+    public record CategoryItem(
+        String code,
+        String label,
+        int sortOrder
+    ) {}
+
+    public record WishInternalSummary(
+        String wishId,
+        String authorId,
+        int currentCheerCount
+    ) {}
+
+    public static final List<CategoryItem> DEFAULT_CATEGORIES = List.of(
+        new CategoryItem("job", "취업", 1),
+        new CategoryItem("study", "학업", 2),
+        new CategoryItem("health", "건강", 3),
+        new CategoryItem("relation", "관계", 4),
+        new CategoryItem("etc", "기타", 5)
+    );
+
     public interface TowerQueryPort {
         List<WishRecord> findByTowerKey(String towerKey);
         List<WishRecord> findAllPublicActiveWishes();
@@ -183,6 +203,10 @@ public class TowerQueryService {
         void saveBloomType(String wishId, String bloomType);
         TowerStatsResponse getStats(String towerKey);
         void decrementStoneStats(String towerKey);
+
+        default List<CategoryItem> findAllCategories() {
+            return DEFAULT_CATEGORIES;
+        }
     }
 
     private final TowerQueryPort queryPort;
@@ -473,6 +497,25 @@ public class TowerQueryService {
             collapsedFloorIndex,
             updatedStats.stoneCount()
         );
+    }
+
+    /**
+     * API-16: 소원 카테고리 목록 조회 (GET /api/v1/categories)
+     */
+    public List<CategoryItem> getCategories() {
+        List<CategoryItem> categories = queryPort.findAllCategories();
+        return (categories != null && !categories.isEmpty()) ? categories : DEFAULT_CATEGORIES;
+    }
+
+    /**
+     * 내부 Feign API: 응원/신고 검증용 소원 요약 조회 (GET /internal/wishes/{wishId}/summary)
+     */
+    public WishInternalSummary getWishSummary(String wishId) {
+        WishRecord existing = queryPort.findById(wishId);
+        if (existing == null || "DELETED".equalsIgnoreCase(existing.status())) {
+            throw new IllegalArgumentException("WISH_NOT_FOUND");
+        }
+        return new WishInternalSummary(existing.id(), existing.userId(), existing.cheerCount());
     }
 
     private static boolean isActiveOrFulfilled(String status) {
