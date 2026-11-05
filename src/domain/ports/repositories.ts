@@ -33,6 +33,7 @@ export interface WishRepository {
   mine(filter?: WishStatus): Promise<Wish[]>;
   cheer(id: WishId): Promise<{ level: CheerLevel; levelUp: boolean }>;
   report(id: WishId, reason: ReportReason): Promise<void>;
+  reportWish?(id: WishId, reason: ReportReason): Promise<void>;
   fulfill(id: WishId, bloom?: BloomType): Promise<BloomType>;
   remove(id: WishId): Promise<void>;
 }

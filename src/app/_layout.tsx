@@ -23,8 +23,10 @@ export default function RootLayout() {
       <Stack.Screen name="stack/place" />
       <Stack.Screen name="stack/ar" />
       <Stack.Screen name="stack/photo" />
+      <Stack.Screen name="explore/index" />
       <Stack.Screen name="me/wishes" />
       <Stack.Screen name="groups/index" />
+      <Stack.Screen name="settings/index" />
     </Stack>
   );
 }

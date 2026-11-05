@@ -130,6 +130,10 @@ export class MsaWishRepository implements WishRepository {
     );
   }
 
+  async reportWish(id: WishId, reason: ReportReason): Promise<void> {
+    return this.report(id, reason);
+  }
+
   async fulfill(id: WishId, bloom?: BloomType): Promise<BloomType> {
     const res = await this.http.request<{ bloomType: BloomType }>(
       'PATCH',

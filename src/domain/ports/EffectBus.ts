@@ -22,6 +22,12 @@ export type VisualEffectEvent =
       readonly levelUp: boolean;
     }
   | {
+      readonly type: 'cheer_spark';
+      readonly wishId: WishId;
+      readonly level: CheerLevelValue;
+      readonly levelUp: boolean;
+    }
+  | {
       readonly type: 'fulfilled';
       readonly wishId: WishId;
       readonly bloom: BloomType;
