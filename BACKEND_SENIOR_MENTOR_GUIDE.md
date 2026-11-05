@@ -30,6 +30,25 @@
 
 ---
 
+## 0.5 [맞춤 과외] Django 경험자를 위한 Spring Boot 1:1 번역 가이드
+
+> **"Django로 백엔드를 해보셨다면 이미 웹 서버의 80%는 알고 계신 겁니다! 단지 Python 문법이 Java 어노테이션(@)으로 바뀌었을 뿐이에요."**
+
+| Django (Python) 에서 쓰던 것 | Spring Boot (Java) 에서의 1:1 대응 | 우리 프로젝트 예시 파일 |
+| --- | --- | --- |
+| urls.py + iews.py (APIView) | **@RestController** + @GetMapping / @PostMapping | (Sprint 2에서 연결할 Controller 계층) |
+| iews.py 안에 길게 짜던 비즈니스 로직 | **@Service** 클래스 (Spring에서는 View/Controller와 로직을 철저히 분리함) | UserAccountService.java, WishCommandService.java |
+| DRF Serializer / Python dataclass | **Java ecord** (데이터만 담는 불변 객체 DTO) | WishRecord, QuotaState, WishCheeredEvent |
+| models.py (models.Model) | **JPA @Entity** 클래스 | (DB 테이블과 1:1 매핑되는 클래스) |
+| Model.objects.filter(...) (ORM) | **Spring Data JpaRepository / Port 인터페이스** | UserAccountPort, WishPersistencePort |
+| settings.py + os.environ.get() | **pplication.yml** + **@Value("")** | DailyWishQuotaService의 @Value("") |
+| @transaction.atomic 데코레이터 | **@Transactional** 어노테이션 (중간에 에러 나면 DB 자동 롤백) | CheerCommandService.cheerWish() |
+| equirements.txt / pyproject.toml | **uild.gradle.kts** (패키지 의존성 관리) | 각 서비스 폴더의 uild.gradle.kts |
+| Celery + Redis/RabbitMQ 비동기 태스크 | **Apache Kafka** (KafkaTemplate.send / @KafkaListener) | InteractionEventConsumer.java |
+| 파이썬에서 직접 객체 생성 svc = Service() | **DI (의존성 주입):** @Service, @Component만 붙여두면 Spring이 알아서 객체를 만들어 생성자에 넣어줌! | 모든 @Service 생성자 |
+
+---
+
 ## 1. 아키텍처 진화 배경: 모놀리식/Supabase에서 Spring Boot MSA로 (D-004 → D-013)
 
 ### 1.1 왜 BaaS(Supabase)에서 Spring Boot MSA로 전환했는가?
