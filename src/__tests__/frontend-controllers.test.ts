@@ -314,6 +314,13 @@ test('Unit 2 StackStoneController (SCR-05 ~ SCR-09): 자동 카테고리 프리�
     usedCount: 5,
   });
 
+  // F07: 초기 5-상태 라이프사이클 및 옵저버 구독 검증
+  assert.equal(stackController.getState().phase, 'IDLE');
+  assert.equal(stackController.getState().lastSimulationTrajectory, undefined);
+
+  const observedPhases: string[] = [];
+  const unsubscribe = stackController.subscribe((s) => observedPhases.push(s.phase));
+
   // SCR-05 돌 모양·색상 선택
   const chosenStone = stackController.selectStone('pebble', '#D6C7B2');
   assert.equal(chosenStone.shape, 'pebble');
@@ -369,24 +376,49 @@ test('Unit 2 StackStoneController (SCR-05 ~ SCR-09): 자동 카테고리 프리�
   assert.equal(arState.mode, 'ar');
   assert.equal(arState.arSession?.kind, 'viro');
 
-  // 1차 드롭: 중심에서 벗어나 실패 -> tower_collapsed 물리 연출 활성화 (D-019)
+  // 1차 드롭: 중심에서 벗어나 실패 -> tower_collapsed 물리 연출 및 COLLAPSING 전이 (D-019, F07)
   const failAttempt = await stackController.placeStone(
     tower,
     new Pose({ x: 2.5, y: 1.5, z: 0 })
   );
   assert.equal(failAttempt.status, 'retry');
+  assert.equal(stackController.getState().phase, 'COLLAPSING');
   assert.equal(stackController.getState().towerCollapsed, true);
   assert.equal(stackController.getState().quota.remaining, 1); // 실패 시 쿼터 미차감
+  assert.ok(stackController.getState().lastSimulationTrajectory !== undefined);
+  assert.ok(stackController.getState().lastSimulationTrajectory!.length > 0);
+  assert.ok(
+    stackController.getState().lastSimulationTrajectory![0].poses.has('dropped-stone')
+  );
 
-  // 2차 드롭: 중앙에 성공적으로 안착 -> 쿼터 1 차감 및 저장 완료
+  // 재시도 시작: startPlacing() -> PLACING 전이
+  stackController.startPlacing();
+  assert.equal(stackController.getState().phase, 'PLACING');
+
+  // 2차 드롭: 중앙에 성공적으로 안착 -> BALANCING -> SETTLED 전이 및 쿼터 1 차감 (F07)
   const successAttempt = await stackController.placeStone(
     tower,
     new Pose({ x: 0.05, y: 0.75, z: 0 })
   );
   assert.equal(successAttempt.status, 'saved');
+  assert.equal(stackController.getState().phase, 'SETTLED');
   assert.equal(stackController.getState().towerCollapsed, false);
   assert.equal(stackController.getState().quota.remaining, 0);
   assert.equal(stackController.getState().savedWishId, 'wish-created-1');
+  assert.ok(stackController.getState().lastSimulationTrajectory !== undefined);
+
+  // 옵저버 구독을 통한 5단계 전이 순서 확인
+  assert.ok(observedPhases.includes('PLACING'));
+  assert.ok(observedPhases.includes('BALANCING'));
+  assert.ok(observedPhases.includes('COLLAPSING'));
+  assert.ok(observedPhases.includes('SETTLED'));
+
+  // resetPlacement(): IDLE 복귀
+  stackController.resetPlacement();
+  assert.equal(stackController.getState().phase, 'IDLE');
+  assert.equal(stackController.getState().towerCollapsed, false);
+
+  unsubscribe();
 
   // SCR-09 AR 사진 촬영
   const photo = await stackController.captureARPhoto();

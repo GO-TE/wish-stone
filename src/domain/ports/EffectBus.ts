@@ -2,6 +2,10 @@ import { type WishId } from '../entities/Wish.ts';
 import { type BloomType } from '../value-objects/BloomType.ts';
 import { type CheerLevelValue } from '../value-objects/CheerLevel.ts';
 import { Pose } from '../value-objects/Pose.ts';
+import {
+  type CollapsedStonePose,
+  type SimulationFrame,
+} from './PhysicsWorld.ts';
 
 export type VisualEffectEvent =
   | {
@@ -9,11 +13,14 @@ export type VisualEffectEvent =
       readonly wishId: WishId;
       readonly pose: Pose;
       readonly autoPlaced: boolean;
+      readonly trajectory?: readonly SimulationFrame[];
     }
   | {
       readonly type: 'tower_collapsed';
       readonly reason: 'drop_failed' | 'wish_deleted';
       readonly affectedStoneCount: number;
+      readonly affectedStones?: readonly CollapsedStonePose[];
+      readonly trajectory?: readonly SimulationFrame[];
     }
   | {
       readonly type: 'cheered';

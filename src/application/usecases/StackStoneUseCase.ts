@@ -2,7 +2,12 @@ import { Stone } from '../../domain/entities/Stone.ts';
 import { Tower } from '../../domain/entities/Tower.ts';
 import { Wish, type WishId } from '../../domain/entities/Wish.ts';
 import { EffectBus } from '../../domain/ports/EffectBus.ts';
-import { type PhysicsWorld } from '../../domain/ports/PhysicsWorld.ts';
+import {
+  type CollapsedStonePose,
+  type DropResult,
+  type PhysicsWorld,
+  type SimulationFrame,
+} from '../../domain/ports/PhysicsWorld.ts';
 import { type WishRepository } from '../../domain/ports/repositories.ts';
 import { CategoryAutoClassifier } from '../../domain/value-objects/CategoryAutoClassifier.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
@@ -20,6 +25,9 @@ export type StackStoneResult =
       readonly status: 'retry';
       readonly attempt: number;
       readonly collapsed: boolean;
+      readonly trajectory?: readonly SimulationFrame[];
+      readonly affectedStones?: readonly CollapsedStonePose[];
+      readonly dropResult?: DropResult;
     }
   | {
       readonly status: 'saved';
@@ -27,6 +35,9 @@ export type StackStoneResult =
       readonly category: CategoryCode;
       readonly pose: Pose;
       readonly autoPlaced: boolean;
+      readonly trajectory?: readonly SimulationFrame[];
+      readonly affectedStones?: readonly CollapsedStonePose[];
+      readonly dropResult?: DropResult;
     };
 
 const MAX_ATTEMPTS = 3;
@@ -63,14 +74,38 @@ export class StackStoneUseCase {
     const resolvedCategory =
       draft.category ?? CategoryAutoClassifier.classify(trimmedContent);
 
+    if (tower.stones.length > 0) {
+      this.physics.addStatic(
+        tower.stones.map((item, index) => {
+          const s = item.stone;
+          (s as unknown as { id?: string }).id = item.id || `tower-stone-${index}`;
+          return s;
+        })
+      );
+    }
+
     const dropResult = await this.physics.drop(draft.stone, dropFrom);
+    const affectedCount =
+      dropResult.affectedStones && dropResult.affectedStones.length > 0
+        ? dropResult.affectedStones.length
+        : Math.min(Math.max(1, tower.stones.length), 5);
+
     if (!dropResult.settled && attempt < MAX_ATTEMPTS) {
       this.effects?.emit({
         type: 'tower_collapsed',
         reason: 'drop_failed',
-        affectedStoneCount: Math.min(tower.stones.length, 5),
+        affectedStoneCount: affectedCount,
+        affectedStones: dropResult.affectedStones,
+        trajectory: dropResult.trajectory,
       });
-      return { status: 'retry', attempt, collapsed: true };
+      return {
+        status: 'retry',
+        attempt,
+        collapsed: true,
+        trajectory: dropResult.trajectory,
+        affectedStones: dropResult.affectedStones,
+        dropResult,
+      };
     }
 
     const autoPlaced = !dropResult.settled;
@@ -91,6 +126,7 @@ export class StackStoneUseCase {
       wishId: id,
       pose: finalPose,
       autoPlaced,
+      trajectory: dropResult.trajectory,
     });
 
     return {
@@ -99,6 +135,9 @@ export class StackStoneUseCase {
       category: resolvedCategory,
       pose: finalPose,
       autoPlaced,
+      trajectory: dropResult.trajectory,
+      affectedStones: dropResult.affectedStones,
+      dropResult,
     };
   }
 }

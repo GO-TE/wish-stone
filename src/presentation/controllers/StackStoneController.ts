@@ -8,6 +8,10 @@ import {
   type CapturedImage,
 } from '../../domain/ports/ARSession.ts';
 import { type VisualEffectEvent } from '../../domain/ports/EffectBus.ts';
+import {
+  type CollapsedStonePose,
+  type SimulationFrame,
+} from '../../domain/ports/PhysicsWorld.ts';
 import { CategoryAutoClassifier } from '../../domain/value-objects/CategoryAutoClassifier.ts';
 import {
   DailyWishQuota,
@@ -21,7 +25,17 @@ import {
 
 export type StackPlacementMode = '3d' | 'ar';
 
+export type StackPlacementPhase =
+  | 'IDLE'
+  | 'PLACING'
+  | 'BALANCING'
+  | 'COLLAPSING'
+  | 'SETTLED';
+
+export type StackStoneListener = (state: StackStoneViewState) => void;
+
 export interface StackStoneViewState {
+  readonly phase: StackPlacementPhase;
   readonly selectedStone: Stone;
   readonly content: string;
   readonly autoCategory: CategoryCode;
@@ -33,6 +47,8 @@ export interface StackStoneViewState {
   readonly arSession: ARSession | null;
   readonly attempt: number;
   readonly towerCollapsed: boolean;
+  readonly lastSimulationTrajectory?: readonly SimulationFrame[];
+  readonly lastAffectedStones?: readonly CollapsedStonePose[];
   readonly savedWishId: WishId | null;
   readonly capturedPhoto: CapturedImage | null;
   readonly lastEffect: VisualEffectEvent | null;
@@ -49,6 +65,8 @@ export interface StackStoneViewState {
 export class StackStoneController {
   private readonly app: ReturnType<typeof createMsaAppContainer>;
   private state: StackStoneViewState;
+  private readonly listeners = new Set<StackStoneListener>();
+  private isPlacing = false;
 
   constructor(
     app = createMsaAppContainer(),
@@ -60,6 +78,7 @@ export class StackStoneController {
   ) {
     this.app = app;
     this.state = {
+      phase: 'IDLE',
       selectedStone: new Stone({
         shape: 'round',
         color: '#A89F91',
@@ -75,23 +94,75 @@ export class StackStoneController {
       arSession: null,
       attempt: 0,
       towerCollapsed: false,
+      lastSimulationTrajectory: undefined,
+      lastAffectedStones: undefined,
       savedWishId: null,
       capturedPhoto: null,
       lastEffect: null,
     };
 
     this.app.effects.subscribe((event) => {
-      this.state = {
-        ...this.state,
-        lastEffect: event,
-        towerCollapsed:
-          event.type === 'tower_collapsed' ? true : this.state.towerCollapsed,
-      };
+      if (event.type === 'tower_collapsed') {
+        this.updateState({
+          lastEffect: event,
+          towerCollapsed: true,
+          phase: 'COLLAPSING',
+          lastSimulationTrajectory:
+            event.trajectory ?? this.state.lastSimulationTrajectory,
+          lastAffectedStones:
+            event.affectedStones ?? this.state.lastAffectedStones,
+        });
+      } else if (event.type === 'stone_stacked') {
+        this.updateState({
+          lastEffect: event,
+          towerCollapsed: false,
+          phase: 'SETTLED',
+          lastSimulationTrajectory:
+            event.trajectory ?? this.state.lastSimulationTrajectory,
+        });
+      } else {
+        this.updateState({ lastEffect: event });
+      }
     });
+  }
+
+  subscribe(listener: StackStoneListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private updateState(partial: Partial<StackStoneViewState>): StackStoneViewState {
+    this.state = { ...this.state, ...partial };
+    for (const listener of this.listeners) {
+      listener(this.state);
+    }
+    return this.state;
   }
 
   getState(): StackStoneViewState {
     return this.state;
+  }
+
+  startPlacing(): StackStoneViewState {
+    if (this.state.phase === 'SETTLED' || this.state.attempt >= 3) {
+      return this.updateState({ phase: 'PLACING', attempt: 0 });
+    }
+    return this.updateState({ phase: 'PLACING' });
+  }
+
+  resetPlacement(): StackStoneViewState {
+    return this.updateState({
+      phase: 'IDLE',
+      towerCollapsed: false,
+      lastSimulationTrajectory: undefined,
+      lastAffectedStones: undefined,
+    });
+  }
+
+  retry(): StackStoneViewState {
+    return this.resetPlacement();
   }
 
   /**
@@ -103,10 +174,9 @@ export class StackStoneController {
       color,
       pose: Pose.origin(),
     });
-    this.state = {
-      ...this.state,
+    this.updateState({
       selectedStone: nextStone,
-    };
+    });
     return nextStone;
   }
 
@@ -116,13 +186,11 @@ export class StackStoneController {
   updateContent(content: string): StackStoneViewState {
     const autoCategory = CategoryAutoClassifier.classify(content);
     const effectiveCategory = this.state.manualCategory ?? autoCategory;
-    this.state = {
-      ...this.state,
+    return this.updateState({
       content,
       autoCategory,
       effectiveCategory,
-    };
-    return this.state;
+    });
   }
 
   /**
@@ -130,23 +198,19 @@ export class StackStoneController {
    */
   overrideCategory(category: CategoryCode | null): StackStoneViewState {
     const effectiveCategory = category ?? this.state.autoCategory;
-    this.state = {
-      ...this.state,
+    return this.updateState({
       manualCategory: category,
       effectiveCategory,
-    };
-    return this.state;
+    });
   }
 
   /**
    * 올릴 돌탑 범위(전체 공개 돌탑 / 지인 그룹 돌탑) 선택 (DB-009)
    */
   selectScope(scope: TowerKey): StackStoneViewState {
-    this.state = {
-      ...this.state,
+    return this.updateState({
       scope,
-    };
-    return this.state;
+    });
   }
 
   /**
@@ -154,10 +218,9 @@ export class StackStoneController {
    */
   grantRewardQuotaBonus(amount = 1): DailyWishQuota {
     const updatedQuota = this.state.quota.grantRewardBonus(amount);
-    this.state = {
-      ...this.state,
+    this.updateState({
       quota: updatedQuota,
-    };
+    });
     return updatedQuota;
   }
 
@@ -174,24 +237,20 @@ export class StackStoneController {
       if (this.state.arSession) {
         await this.state.arSession.stop();
       }
-      this.state = {
-        ...this.state,
+      return this.updateState({
         mode: '3d',
         arSession: null,
-      };
-      return this.state;
+      });
     }
 
     const session = await this.app.arSessionFactory.create(
       this.app.capabilities
     );
     if (!session) {
-      this.state = {
-        ...this.state,
+      return this.updateState({
         mode: '3d',
         arSession: null,
-      };
-      return this.state;
+      });
     }
 
     await session.start();
@@ -199,12 +258,10 @@ export class StackStoneController {
       session.placeTower(tower, anchor);
     }
 
-    this.state = {
-      ...this.state,
+    return this.updateState({
       mode: 'ar',
       arSession: session,
-    };
-    return this.state;
+    });
   }
 
   /**
@@ -218,39 +275,64 @@ export class StackStoneController {
       throw new Error('DAILY_QUOTA_EXCEEDED');
     }
 
-    const nextAttempt = this.state.attempt + 1;
-    const result = await this.app.useCases.stackStone.execute(
-      {
-        content: this.state.content,
-        category: this.state.effectiveCategory,
-        scope: this.state.scope,
-        stone: this.state.selectedStone,
-      },
-      tower,
-      dropFrom,
-      nextAttempt
-    );
-
-    if (result.status === 'retry') {
-      this.state = {
-        ...this.state,
-        attempt: nextAttempt,
-        towerCollapsed: result.collapsed,
-      };
-      return result;
+    // Controller-level re-entrancy defense against concurrent invocations
+    if (this.isPlacing || this.state.phase === 'BALANCING') {
+      throw new Error('PLACEMENT_IN_PROGRESS');
     }
+    this.isPlacing = true;
 
-    const consumedQuota = this.state.quota.consumeOne();
-    this.state = {
-      ...this.state,
-      attempt: nextAttempt,
-      towerCollapsed: false,
-      quota: consumedQuota,
-      savedWishId: result.id,
-      effectiveCategory: result.category,
-      selectedStone: this.state.selectedStone.withPose(result.pose),
-    };
-    return result;
+    try {
+      if (this.state.phase === 'SETTLED') {
+        this.updateState({ attempt: 0 });
+      }
+      if (this.state.phase === 'IDLE') {
+        this.updateState({ phase: 'PLACING' });
+      }
+      this.updateState({ phase: 'BALANCING' });
+
+      const nextAttempt = this.state.attempt + 1;
+      const result = await this.app.useCases.stackStone.execute(
+        {
+          content: this.state.content,
+          category: this.state.effectiveCategory,
+          scope: this.state.scope,
+          stone: this.state.selectedStone,
+        },
+        tower,
+        dropFrom,
+        nextAttempt
+      );
+
+      if (result.status === 'retry') {
+        this.updateState({
+          phase: 'COLLAPSING',
+          attempt: nextAttempt,
+          towerCollapsed: result.collapsed,
+          lastSimulationTrajectory: result.trajectory,
+          lastAffectedStones: result.affectedStones,
+        });
+        return result;
+      }
+
+      const consumedQuota = this.state.quota.consumeOne();
+      this.updateState({
+        phase: 'SETTLED',
+        attempt: 0, // Reset attempt counter upon settlement to prevent session leaks
+        towerCollapsed: false,
+        quota: consumedQuota,
+        savedWishId: result.id,
+        effectiveCategory: result.category,
+        selectedStone: this.state.selectedStone.withPose(result.pose),
+        lastSimulationTrajectory: result.trajectory,
+        lastAffectedStones: undefined,
+      });
+      return result;
+    } catch (error) {
+      this.updateState({ phase: 'IDLE' });
+      throw error;
+    } finally {
+      this.isPlacing = false;
+    }
   }
 
   /**
@@ -261,21 +343,19 @@ export class StackStoneController {
       throw new Error('AR_SESSION_NOT_ACTIVE');
     }
     const image = await this.state.arSession.capture();
-    this.state = {
-      ...this.state,
+    this.updateState({
       capturedPhoto: image,
-    };
+    });
     return image;
   }
 
   async stopARSession(): Promise<void> {
     if (this.state.arSession) {
       await this.state.arSession.stop();
-      this.state = {
-        ...this.state,
+      this.updateState({
         arSession: null,
         mode: '3d',
-      };
+      });
     }
   }
 }

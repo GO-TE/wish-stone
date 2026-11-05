@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { type StoneShape } from '../../domain/entities/Stone.ts';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Canvas, useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import { Stone, type StoneShape } from '../../domain/entities/Stone.ts';
 import { type TowerStoneItem } from '../../domain/entities/Tower.ts';
 import { type WishId } from '../../domain/entities/Wish.ts';
+import { type SimulationFrame } from '../../domain/ports/PhysicsWorld.ts';
+import { Pose } from '../../domain/value-objects/Pose.ts';
+import { type StackPlacementPhase } from '../controllers/StackStoneController.ts';
 import {
+  buildStoneGeometrySpec,
   buildTowerSceneGraph,
+  interpolateTrajectoryFrame,
+  resetTowerMeshTransforms,
   type StoneRenderNode,
 } from './stoneTowerSpec.ts';
 
@@ -13,11 +21,53 @@ export * from './stoneTowerSpec.ts';
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
 export interface StoneTowerCanvasProps {
-  readonly stones: readonly TowerStoneItem[];
+  readonly stones: readonly (TowerStoneItem | Stone)[];
   readonly collapsedShake?: boolean;
   readonly onSelectStone?: (stoneId: WishId) => void;
   readonly defaultStyle?: TowerArchStyle;
   readonly showControls?: boolean;
+  readonly trajectory?: readonly SimulationFrame[];
+  readonly phase?: StackPlacementPhase;
+  readonly droppedStone?: Stone | null;
+  readonly onPlaybackComplete?: () => void;
+  readonly onCollapseAnimationComplete?: () => void;
+  readonly renderMode?: '3d' | '2d' | 'auto';
+}
+
+function normalizeTowerStoneItems(
+  stones: readonly (TowerStoneItem | Stone)[]
+): TowerStoneItem[] {
+  return stones.map((item, index) => {
+    if ('stone' in item && item.stone instanceof Stone) {
+      return item as TowerStoneItem;
+    }
+    const stone = item as Stone;
+    const customId = (stone as unknown as { id?: string }).id ?? `stone-${index}`;
+    return {
+      id: customId,
+      stone,
+      status: 'active',
+      bloom: null,
+      cheerLevel: 0,
+      isMine: false,
+      nickname: null,
+    };
+  });
+}
+
+function isWebGLAvailable(): boolean {
+  try {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return false;
+    }
+    const canvas = document.createElement('canvas');
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -110,6 +160,223 @@ function organizeTowerTiers(
   return tiers;
 }
 
+function StoneMesh3D({
+  node,
+  index,
+  meshMapRef,
+  onSelect,
+}: {
+  node: StoneRenderNode;
+  index: number;
+  meshMapRef: React.MutableRefObject<Map<string, THREE.Mesh>>;
+  onSelect?: () => void;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    if (meshRef.current) {
+      meshMapRef.current.set(node.id, meshRef.current);
+      meshMapRef.current.set(`tower-stone-${index}`, meshRef.current);
+    }
+    return () => {
+      meshMapRef.current.delete(node.id);
+      meshMapRef.current.delete(`tower-stone-${index}`);
+    };
+  }, [node.id, index, meshMapRef]);
+
+  const geo = node.geometry;
+  const sx = geo.scale.x * 0.5;
+  const sy = geo.scale.y * 0.5;
+  const sz = geo.scale.z * 0.5;
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={[node.position.x, node.position.y, node.position.z]}
+      castShadow
+      receiveShadow
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect?.();
+      }}
+    >
+      {geo.shape === 'round' ? (
+        <dodecahedronGeometry args={[sy * 1.1, 1]} />
+      ) : geo.shape === 'flat' ? (
+        <boxGeometry args={[sx, sy, sz]} />
+      ) : geo.shape === 'tall' ? (
+        <boxGeometry args={[sx, sy, sz]} />
+      ) : geo.shape === 'pebble' ? (
+        <dodecahedronGeometry args={[sy * 1.05, 1]} />
+      ) : (
+        <dodecahedronGeometry args={[sy * 1.2, 0]} />
+      )}
+      <meshStandardMaterial
+        color={node.material.baseColor}
+        roughness={node.material.roughness}
+        metalness={node.material.metalness}
+        emissive={node.material.emissiveColor}
+        emissiveIntensity={node.material.emissiveIntensity}
+        flatShading={geo.flatShading}
+      />
+    </mesh>
+  );
+}
+
+function DroppedStoneMesh3D({
+  stone,
+  meshMapRef,
+  initialPoseOverride,
+}: {
+  stone: Stone;
+  meshMapRef: React.MutableRefObject<Map<string, THREE.Mesh>>;
+  initialPoseOverride?: Pose;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    if (meshRef.current) {
+      meshMapRef.current.set('dropped-stone', meshRef.current);
+      const customId = (stone as unknown as { id?: string }).id;
+      if (customId) {
+        meshMapRef.current.set(customId, meshRef.current);
+      }
+    }
+    return () => {
+      meshMapRef.current.delete('dropped-stone');
+      const customId = (stone as unknown as { id?: string }).id;
+      if (customId) {
+        meshMapRef.current.delete(customId);
+      }
+    };
+  }, [stone, meshMapRef]);
+
+  const geo = buildStoneGeometrySpec(stone.shape);
+  const sx = geo.scale.x * 0.5;
+  const sy = geo.scale.y * 0.5;
+  const sz = geo.scale.z * 0.5;
+
+  const effectivePose = initialPoseOverride ?? stone.pose;
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={[effectivePose.position.x, effectivePose.position.y, effectivePose.position.z]}
+      quaternion={[
+        effectivePose.rotation.qx,
+        effectivePose.rotation.qy,
+        effectivePose.rotation.qz,
+        effectivePose.rotation.qw,
+      ]}
+      castShadow
+      receiveShadow
+    >
+      {geo.shape === 'round' ? (
+        <dodecahedronGeometry args={[sy * 1.1, 1]} />
+      ) : geo.shape === 'flat' ? (
+        <boxGeometry args={[sx, sy, sz]} />
+      ) : geo.shape === 'tall' ? (
+        <boxGeometry args={[sx, sy, sz]} />
+      ) : geo.shape === 'pebble' ? (
+        <dodecahedronGeometry args={[sy * 1.05, 1]} />
+      ) : (
+        <dodecahedronGeometry args={[sy * 1.2, 0]} />
+      )}
+      <meshStandardMaterial
+        color={stone.color}
+        roughness={geo.roughness}
+        metalness={geo.metalness}
+        flatShading={geo.flatShading}
+      />
+    </mesh>
+  );
+}
+
+function TrajectorySynchronizer({
+  trajectory,
+  meshMapRef,
+  onPlaybackComplete,
+  collapsedShake,
+  phase,
+}: {
+  trajectory?: readonly SimulationFrame[];
+  meshMapRef: React.MutableRefObject<Map<string, THREE.Mesh>>;
+  onPlaybackComplete?: () => void;
+  collapsedShake?: boolean;
+  phase?: StackPlacementPhase;
+}) {
+  const playbackStartTimeRef = useRef<number | null>(null);
+  const completedRef = useRef(false);
+  const initialCameraPosRef = useRef<THREE.Vector3 | null>(null);
+
+  useEffect(() => {
+    if (trajectory && trajectory.length > 0 && phase !== 'IDLE') {
+      playbackStartTimeRef.current = performance.now();
+      completedRef.current = false;
+    } else {
+      playbackStartTimeRef.current = null;
+      completedRef.current = false;
+    }
+  }, [trajectory, phase]);
+
+  useFrame(({ camera }) => {
+    if (!initialCameraPosRef.current) {
+      initialCameraPosRef.current = camera.position.clone();
+    }
+
+    if (
+      phase === 'IDLE' ||
+      !trajectory ||
+      trajectory.length === 0 ||
+      completedRef.current
+    ) {
+      if (
+        initialCameraPosRef.current &&
+        camera.position.distanceTo(initialCameraPosRef.current) > 0.001
+      ) {
+        camera.position.lerp(initialCameraPosRef.current, 0.1);
+      }
+      return;
+    }
+    if (playbackStartTimeRef.current === null) return;
+
+    const elapsed = (performance.now() - playbackStartTimeRef.current) / 1000;
+    const result = interpolateTrajectoryFrame(trajectory, elapsed);
+
+    // Imperative transform synchronization
+    for (const [id, pose] of result.poses) {
+      const mesh = meshMapRef.current.get(id);
+      if (mesh) {
+        mesh.position.set(pose.position.x, pose.position.y, pose.position.z);
+        mesh.quaternion.set(
+          pose.rotation.qx,
+          pose.rotation.qy,
+          pose.rotation.qz,
+          pose.rotation.qw
+        );
+      }
+    }
+
+    // Camera shake during dynamic collapse with smooth decay
+    if (collapsedShake && elapsed < 0.6) {
+      const intensity = Math.max(0, (0.6 - elapsed) * 0.05);
+      camera.position.x =
+        initialCameraPosRef.current.x + (Math.random() - 0.5) * intensity;
+      camera.position.y =
+        initialCameraPosRef.current.y + (Math.random() - 0.5) * intensity;
+    } else if (initialCameraPosRef.current) {
+      camera.position.lerp(initialCameraPosRef.current, 0.15);
+    }
+
+    if (result.isComplete) {
+      completedRef.current = true;
+      onPlaybackComplete?.();
+    }
+  });
+
+  return null;
+}
+
 /**
  * 3D 돌탑 캔버스 컴포넌트 (`SCR-04`, `SCR-07`, `SCR-10`)
  * - 알약/캡슐 형태 완전 탈피: 상하 비대칭 자연석 윤곽 (능선 아치 + 바닥 평면)
@@ -123,12 +390,24 @@ export function StoneTowerCanvas({
   onSelectStone,
   defaultStyle = 'cairn',
   showControls = true,
+  trajectory,
+  phase,
+  droppedStone,
+  onPlaybackComplete,
+  onCollapseAnimationComplete,
+  renderMode = 'auto',
 }: StoneTowerCanvasProps) {
-  const nodes = buildTowerSceneGraph(stones);
+  const normalizedStones = useMemo(() => normalizeTowerStoneItems(stones), [stones]);
+  const nodes = buildTowerSceneGraph(normalizedStones);
   const [towerStyle, setTowerStyle] = useState<TowerArchStyle>(defaultStyle);
   const [selectedNode, setSelectedNode] = useState<StoneRenderNode | null>(null);
   const [randomSeed, setRandomSeed] = useState(42);
   const [lushMossEnabled, setLushMossEnabled] = useState(true);
+  const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
+
+  const webGLSupported = useMemo(() => isWebGLAvailable(), []);
+  const use3D =
+    renderMode === '3d' || (renderMode !== '2d' && webGLSupported && Platform.OS === 'web');
 
   const tiers = organizeTowerTiers(nodes, towerStyle);
 
@@ -140,6 +419,46 @@ export function StoneTowerCanvas({
   const handleReroll = () => {
     setRandomSeed((prev) => (prev * 1664525 + 1013904223) % 100000);
   };
+
+  // Trajectory playback fallback for 2D mode & headless test environments
+  useEffect(() => {
+    if (use3D || !trajectory || trajectory.length === 0) return;
+    const startTime = performance.now();
+    let animId: number;
+    let timerId: NodeJS.Timeout;
+
+    if (typeof requestAnimationFrame !== 'undefined') {
+      const stepAnim = () => {
+        const elapsed = (performance.now() - startTime) / 1000;
+        const res = interpolateTrajectoryFrame(trajectory, elapsed);
+        if (res.isComplete) {
+          (onCollapseAnimationComplete ?? onPlaybackComplete)?.();
+        } else {
+          animId = requestAnimationFrame(stepAnim);
+        }
+      };
+      animId = requestAnimationFrame(stepAnim);
+    } else {
+      timerId = setTimeout(() => {
+        (onCollapseAnimationComplete ?? onPlaybackComplete)?.();
+      }, 500);
+    }
+
+    return () => {
+      if (typeof cancelAnimationFrame !== 'undefined' && animId) {
+        cancelAnimationFrame(animId);
+      }
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [use3D, trajectory, onPlaybackComplete, onCollapseAnimationComplete]);
+
+  // IDLE 상태 진입 시 또는 궤적이 없을 때 모든 3D 메쉬를 원래 위치 및 직립 회전으로 복구
+  useEffect(() => {
+    const hasTrajectory = Boolean(trajectory && trajectory.length > 0);
+    if (phase === 'IDLE' || (!hasTrajectory && phase !== 'COLLAPSING')) {
+      resetTowerMeshTransforms(meshMapRef.current, nodes, droppedStone);
+    }
+  }, [phase, trajectory, nodes, droppedStone]);
 
   return (
     <View
@@ -226,7 +545,60 @@ export function StoneTowerCanvas({
         </View>
       )}
 
-      {nodes.length === 0 ? (
+      {use3D ? (
+        <View style={styles.threeCanvasWrapper}>
+          <Canvas
+            shadows
+            camera={{ position: [0, 1.8, 3.8], fov: 45 }}
+            style={styles.threeCanvas}
+          >
+            <ambientLight intensity={0.55} />
+            <directionalLight
+              position={[3.5, 6.0, 4.0]}
+              intensity={1.15}
+              castShadow
+            />
+            <hemisphereLight args={['#EAE4DC', '#1E2026', 0.4]} />
+
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+              <planeGeometry args={[8, 8]} />
+              <shadowMaterial opacity={0.28} />
+            </mesh>
+
+            {nodes.map((node, index) => (
+              <StoneMesh3D
+                key={node.id}
+                node={node}
+                index={index}
+                meshMapRef={meshMapRef}
+                onSelect={() => handleStonePress(node)}
+              />
+            ))}
+
+            {droppedStone && (
+              <DroppedStoneMesh3D
+                stone={droppedStone}
+                meshMapRef={meshMapRef}
+                initialPoseOverride={
+                  (droppedStone.pose.position.x === 0 &&
+                    droppedStone.pose.position.y === 0 &&
+                    droppedStone.pose.position.z === 0 &&
+                    trajectory?.[0]?.poses.get('dropped-stone')) ||
+                  undefined
+                }
+              />
+            )}
+
+            <TrajectorySynchronizer
+              trajectory={trajectory}
+              meshMapRef={meshMapRef}
+              onPlaybackComplete={onCollapseAnimationComplete ?? onPlaybackComplete}
+              collapsedShake={collapsedShake}
+              phase={phase}
+            />
+          </Canvas>
+        </View>
+      ) : nodes.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyPebbleVisual}>
             <View style={styles.emptyStoneShape} />
@@ -728,5 +1100,15 @@ const styles = StyleSheet.create({
   emptySubtext: {
     color: '#8B95A1',
     fontSize: 12,
+  },
+  threeCanvasWrapper: {
+    width: '100%',
+    height: 320,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  threeCanvas: {
+    width: '100%',
+    height: '100%',
   },
 });
