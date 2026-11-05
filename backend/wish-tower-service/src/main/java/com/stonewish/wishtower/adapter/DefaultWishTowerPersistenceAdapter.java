@@ -1,15 +1,19 @@
 package com.stonewish.wishtower.adapter;
 
 import com.stonewish.wishtower.consumer.InteractionEventConsumer.WishEventProjectionHandler;
+import com.stonewish.wishtower.entity.CategoryEntity;
 import com.stonewish.wishtower.entity.DailyWishQuotaEntity;
 import com.stonewish.wishtower.entity.DailyWishQuotaEntity.QuotaId;
 import com.stonewish.wishtower.entity.ProcessedEventEntity;
 import com.stonewish.wishtower.entity.WishEntity;
+import com.stonewish.wishtower.repository.CategoryJpaRepository;
 import com.stonewish.wishtower.repository.DailyWishQuotaJpaRepository;
 import com.stonewish.wishtower.repository.ProcessedEventJpaRepository;
 import com.stonewish.wishtower.repository.WishJpaRepository;
 import com.stonewish.wishtower.service.DailyWishQuotaService.DailyQuotaPort;
 import com.stonewish.wishtower.service.DailyWishQuotaService.QuotaState;
+import com.stonewish.wishtower.service.TowerQueryService;
+import com.stonewish.wishtower.service.TowerQueryService.CategoryItem;
 import com.stonewish.wishtower.service.TowerQueryService.TowerQueryPort;
 import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
 import com.stonewish.wishtower.service.WishCommandService.WishPersistencePort;
@@ -37,21 +41,32 @@ public class DefaultWishTowerPersistenceAdapter
     private final WishJpaRepository wishRepository;
     private final DailyWishQuotaJpaRepository quotaRepository;
     private final ProcessedEventJpaRepository processedEventRepository;
+    private final CategoryJpaRepository categoryRepository;
 
     private final Map<String, AtomicLong> stoneCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> todayCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> fulfilledCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> cheerCounts = new ConcurrentHashMap<>();
 
-    @Autowired
     public DefaultWishTowerPersistenceAdapter(
         WishJpaRepository wishRepository,
         DailyWishQuotaJpaRepository quotaRepository,
         ProcessedEventJpaRepository processedEventRepository
     ) {
+        this(wishRepository, quotaRepository, processedEventRepository, null);
+    }
+
+    @Autowired
+    public DefaultWishTowerPersistenceAdapter(
+        WishJpaRepository wishRepository,
+        DailyWishQuotaJpaRepository quotaRepository,
+        ProcessedEventJpaRepository processedEventRepository,
+        CategoryJpaRepository categoryRepository
+    ) {
         this.wishRepository = wishRepository;
         this.quotaRepository = quotaRepository;
         this.processedEventRepository = processedEventRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     @Override
@@ -161,6 +176,23 @@ public class DefaultWishTowerPersistenceAdapter
     public void decrementStoneStats(String towerKey) {
         stoneCounts.computeIfAbsent(towerKey, k -> new AtomicLong(0))
             .updateAndGet(cur -> Math.max(0L, cur - 1L));
+    }
+
+    @Override
+    public List<CategoryItem> findAllCategories() {
+        if (categoryRepository == null) {
+            return TowerQueryService.DEFAULT_CATEGORIES;
+        }
+        List<CategoryEntity> existing = categoryRepository.findAllByOrderBySortOrderAsc();
+        if (existing.isEmpty()) {
+            List<CategoryEntity> defaults = TowerQueryService.DEFAULT_CATEGORIES.stream()
+                .map(c -> new CategoryEntity(c.code(), c.label(), c.sortOrder()))
+                .toList();
+            existing = categoryRepository.saveAll(defaults);
+        }
+        return existing.stream()
+            .map(e -> new CategoryItem(e.getCode(), e.getLabel(), e.getSortOrder()))
+            .toList();
     }
 
     @Override
