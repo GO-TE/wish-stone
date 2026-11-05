@@ -44,3 +44,7 @@ spring:
           uri: http://localhost:8084
           predicates:
             - Path=/api/v1/groups/**
+
+stonewish:
+  jwt:
+    secret: ${STONEWISH_JWT_SECRET:stonewish-default-hmac-sha256-secret-key-2026-secure}

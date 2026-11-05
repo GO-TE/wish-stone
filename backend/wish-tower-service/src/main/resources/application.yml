@@ -1,0 +1,20 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: wish-tower-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:false}
+
+services:
+  user-auth:
+    url: ${USER_AUTH_SERVICE_URL:http://localhost:8081}
+  group:
+    url: ${GROUP_SERVICE_URL:http://localhost:8084}
+
+stonewish:
+  quota:
+    daily-base: 5

@@ -25,6 +25,10 @@ subprojects {
         }
     }
 
+    tasks.withType<JavaCompile> {
+        options.release.set(21)
+    }
+
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
             mavenBom("org.springframework.boot:spring-boot-dependencies:3.3.5")

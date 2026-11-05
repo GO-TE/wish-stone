@@ -1,12 +1,22 @@
 package com.stonewish.userauth.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -18,17 +28,24 @@ import org.springframework.stereotype.Service;
  * 2) 게스트 -> 소셜 계정 연결(link, D-007):
  *    - 새로운 userId를 발급하면 게스트 시절 쌓은 돌이 증발합니다.
  *    - 반드시 기존 게스트의 userId는 유지한 채 isGuest=false로 바꾸고 소셜 Identity만 연결해야 데이터가 보존됩니다.
- * 3) 회원 탈퇴(SCR-18):
- *    - 탈퇴 시 개인 식별 정보(nickname, tag, linkedProvider)를 익명화(null) 및 소프트 삭제 처리합니다.
+ * 3) N-05 HMAC-SHA256 서명 JWT 발급 및 검증:
+ *    - 단순 평문(`uid:...`) 토큰 대신 RFC 7519 표준 `header.payload.signature` 포맷으로 HMAC-SHA256 서명하여
+ *      클라이언트 측 페이로드 변조(Tampering) 및 만료(exp) 토큰 재사용을 원천 차단합니다.
  */
 @Service
 public class UserAccountService {
+
+    public static final String DEFAULT_JWT_SECRET = "stonewish-default-hmac-sha256-secret-key-2026-secure";
+    public static final long DEFAULT_TTL_SECONDS = 604800L; // 7 days
 
     private static final Set<String> FORBIDDEN_IMPERSONATION_WORDS = Set.of(
         "관리자", "운영자", "admin", "system", "stonewish"
     );
     private static final Set<String> VALID_PROVIDERS = Set.of("guest", "kakao", "google", "apple");
     private static final String TAG_PATTERN = "^[a-zA-Z0-9가-힣]{2,10}$";
+    private static final Pattern SUB_PATTERN = Pattern.compile("\"sub\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Pattern GUEST_PATTERN = Pattern.compile("\"guest\"\\s*:\\s*(true|false)");
+    private static final Pattern EXP_PATTERN = Pattern.compile("\"exp\"\\s*:\\s*(\\d+)");
 
     public record NicknameWithTag(String nickname, String tag) {
         public String displayName() {
@@ -49,12 +66,15 @@ public class UserAccountService {
         }
     }
 
-    /**
-     * M-06: 로그인 및 게스트->소셜 계정 연결 시 Gateway 호환 토큰(`uid:{id}:guest:{isGuest}`)과 유저 정보를 함께 반환한다.
-     */
     public record AuthTokenResult(
         String accessToken,
         UserAccount user
+    ) {}
+
+    public record VerifiedJwtClaims(
+        String userId,
+        boolean isGuest,
+        long exp
     ) {}
 
     public interface UserAccountPort {
@@ -73,19 +93,41 @@ public class UserAccountService {
 
     private final UserAccountPort accountPort;
     private final Random random;
+    private final String jwtSecret;
+    private final long ttlSeconds;
+
+    @Autowired
+    public UserAccountService(
+        UserAccountPort accountPort,
+        @Value("${stonewish.jwt.secret:" + DEFAULT_JWT_SECRET + "}") String jwtSecret,
+        @Value("${stonewish.jwt.ttl-seconds:604800}") long ttlSeconds
+    ) {
+        this(accountPort, new Random(), jwtSecret, ttlSeconds);
+    }
 
     public UserAccountService(UserAccountPort accountPort) {
-        this(accountPort, new Random());
+        this(accountPort, new Random(), DEFAULT_JWT_SECRET, DEFAULT_TTL_SECONDS);
     }
 
     public UserAccountService(UserAccountPort accountPort, Random random) {
+        this(accountPort, random, DEFAULT_JWT_SECRET, DEFAULT_TTL_SECONDS);
+    }
+
+    public UserAccountService(
+        UserAccountPort accountPort,
+        Random random,
+        String jwtSecret,
+        long ttlSeconds
+    ) {
         this.accountPort = accountPort;
         this.random = random;
+        this.jwtSecret = (jwtSecret != null && !jwtSecret.isBlank()) ? jwtSecret : DEFAULT_JWT_SECRET;
+        this.ttlSeconds = ttlSeconds > 0 ? ttlSeconds : DEFAULT_TTL_SECONDS;
     }
 
     /**
-     * API-17 (M-06): 소셜(Apple/Kakao/Google) 및 게스트 로그인 (POST /api/v1/auth/login)
-     * Gateway JwtHeaderSanitizeFilter가 검증·파싱하는 `uid:{id}:guest:{bool}` 서명 토큰을 발급한다.
+     * API-17 (M-06 & N-05): 소셜(Apple/Kakao/Google) 및 게스트 로그인 (POST /api/v1/auth/login)
+     * HMAC-SHA256 서명된 JWT와 유저 프로필을 반환한다.
      */
     public AuthTokenResult login(String provider) {
         String normalizedProvider = (provider == null || provider.isBlank())
@@ -105,7 +147,7 @@ public class UserAccountService {
             isGuest ? null : normalizedProvider
         );
         UserAccount saved = accountPort.save(created);
-        return new AuthTokenResult(issueToken(saved), saved);
+        return new AuthTokenResult(issueSignedToken(saved), saved);
     }
 
     /**
@@ -176,15 +218,104 @@ public class UserAccountService {
     }
 
     /**
-     * API-18 (M-06): 게스트 -> 소셜 연동 후 갱신된 `isGuest=false` 토큰과 유저 정보를 함께 반환한다.
+     * API-18 (M-06 & N-05): 게스트 -> 소셜 연동 후 갱신된 `isGuest=false` HMAC-SHA256 서명 JWT와 유저 정보를 함께 반환한다.
      */
     public AuthTokenResult linkGuestToSocialWithToken(String userId, String provider) {
         UserAccount linked = linkGuestToSocial(userId, provider);
-        return new AuthTokenResult(issueToken(linked), linked);
+        return new AuthTokenResult(issueSignedToken(linked), linked);
+    }
+
+    public String issueSignedToken(UserAccount account) {
+        return issueToken(account, jwtSecret, ttlSeconds, Instant.now());
+    }
+
+    public VerifiedJwtClaims verifyToken(String token) {
+        return verifyAndParseToken(token, jwtSecret, Instant.now());
     }
 
     public static String issueToken(UserAccount account) {
-        return "uid:" + account.id() + ":guest:" + account.isGuest();
+        return issueToken(account, DEFAULT_JWT_SECRET, DEFAULT_TTL_SECONDS, Instant.now());
+    }
+
+    public static String issueToken(
+        UserAccount account,
+        String secret,
+        long ttlSeconds,
+        Instant issuedAt
+    ) {
+        long iat = issuedAt.getEpochSecond();
+        long exp = iat + ttlSeconds;
+        String headerJson = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+        String payloadJson = String.format(
+            Locale.ROOT,
+            "{\"sub\":\"%s\",\"guest\":%s,\"iat\":%d,\"exp\":%d}",
+            account.id(),
+            account.isGuest(),
+            iat,
+            exp
+        );
+
+        Base64.Encoder urlEncoder = Base64.getUrlEncoder().withoutPadding();
+        String encodedHeader = urlEncoder.encodeToString(headerJson.getBytes(StandardCharsets.UTF_8));
+        String encodedPayload = urlEncoder.encodeToString(payloadJson.getBytes(StandardCharsets.UTF_8));
+        String signingInput = encodedHeader + "." + encodedPayload;
+        String signature = signHmacSha256(signingInput, secret);
+        return signingInput + "." + signature;
+    }
+
+    public static VerifiedJwtClaims verifyAndParseToken(String token, String secret, Instant now) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        String[] parts = token.split("\\.");
+        if (parts.length != 3) {
+            return null;
+        }
+        String signingInput = parts[0] + "." + parts[1];
+        String expectedSig = signHmacSha256(signingInput, secret);
+        if (!MessageDigest.isEqual(
+            expectedSig.getBytes(StandardCharsets.UTF_8),
+            parts[2].getBytes(StandardCharsets.UTF_8)
+        )) {
+            return null;
+        }
+
+        try {
+            String payloadJson = new String(
+                Base64.getUrlDecoder().decode(parts[1]),
+                StandardCharsets.UTF_8
+            );
+            Matcher subMatcher = SUB_PATTERN.matcher(payloadJson);
+            Matcher guestMatcher = GUEST_PATTERN.matcher(payloadJson);
+            Matcher expMatcher = EXP_PATTERN.matcher(payloadJson);
+            if (!subMatcher.find() || !guestMatcher.find() || !expMatcher.find()) {
+                return null;
+            }
+            String sub = subMatcher.group(1);
+            boolean isGuest = Boolean.parseBoolean(guestMatcher.group(1));
+            long exp = Long.parseLong(expMatcher.group(1));
+            if (sub.isBlank() || exp <= now.getEpochSecond()) {
+                return null;
+            }
+            return new VerifiedJwtClaims(sub, isGuest, exp);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private static String signHmacSha256(String signingInput, String secret) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec keySpec = new SecretKeySpec(
+                secret.getBytes(StandardCharsets.UTF_8),
+                "HmacSHA256"
+            );
+            mac.init(keySpec);
+            byte[] rawHmac = mac.doFinal(signingInput.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(rawHmac);
+        } catch (Exception ex) {
+            throw new IllegalStateException("JWT_SIGNING_FAILED", ex);
+        }
     }
 
     /**

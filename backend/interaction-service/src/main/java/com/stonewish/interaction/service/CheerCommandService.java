@@ -4,6 +4,7 @@ import com.stonewish.events.StoneWishEvents;
 import com.stonewish.events.StoneWishEvents.WishCheeredEvent;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class CheerCommandService {
         this(persistencePort, kafkaTemplate, CheerThresholds.INITIAL_STAGE_DEFAULT);
     }
 
+    @Autowired
     public CheerCommandService(
         CheerPersistencePort persistencePort,
         KafkaTemplate<String, Object> kafkaTemplate,
