@@ -5,6 +5,7 @@ import { StackStoneUseCase } from '../../application/usecases/StackStoneUseCase.
 import { InMemoryEffectBus } from '../../domain/ports/EffectBus.ts';
 import { type PhysicsWorld } from '../../domain/ports/PhysicsWorld.ts';
 import { type DailyWishQuotaProps } from '../../domain/value-objects/DailyWishQuota.ts';
+import { ToastStore } from '../../presentation/components/toastStore.ts';
 import { DashboardController } from '../../presentation/controllers/DashboardController.ts';
 import { ExploreWishesController } from '../../presentation/controllers/ExploreWishesController.ts';
 import { GroupController } from '../../presentation/controllers/GroupController.ts';
@@ -21,6 +22,7 @@ import { MsaTowerRepository } from '../api/MsaTowerRepository.ts';
 import { MsaWishRepository } from '../api/MsaWishRepository.ts';
 import { ARSessionFactory } from '../ar/ARSessionFactory.ts';
 import { MsaAuthService } from '../auth/MsaAuthService.ts';
+import { OptimisticMutationManager } from '../cache/OptimisticMutationManager.ts';
 import { SimpleTowerPhysicsWorld } from '../physics/SimpleTowerPhysicsWorld.ts';
 import {
   BrowserAndNativeCapabilities,
@@ -60,6 +62,12 @@ export function createAppContainer(config: AppContainerConfig = {}) {
   const groups = new MsaGroupRepository(http);
   const seenStore = new BoundedSeenWishStore(100);
   const effects = new InMemoryEffectBus();
+  const toastStore = new ToastStore();
+  const optimisticManager = new OptimisticMutationManager(
+    wishes,
+    effects,
+    toastStore
+  );
   const physics = physicsFactory();
   const arSessionFactory = new ARSessionFactory(physicsFactory);
 
@@ -75,6 +83,8 @@ export function createAppContainer(config: AppContainerConfig = {}) {
     auth,
     repositories: { wishes, towers, groups, seenStore },
     effects,
+    toastStore,
+    optimisticManager,
     capabilities,
     arSessionFactory,
     physics,
