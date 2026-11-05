@@ -70,7 +70,7 @@ export default function LoginScreen() {
       {/* Top Header & Visual Pebble */}
       <View style={styles.header}>
         <View style={styles.logoPebble}>
-          <Text style={styles.pebbleIcon}>🪨</Text>
+          <Text style={styles.pebbleIcon}>⛰️</Text>
         </View>
         <Text style={styles.title}>
           마음을 담은 돌을 쌓고{'\n'}오늘의 위로를 받아요

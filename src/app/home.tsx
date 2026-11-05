@@ -81,7 +81,7 @@ export default function HomeScreen() {
         {/* 상단 네비게이션 헤더 */}
         <View style={styles.header}>
           <View style={styles.brandGroup}>
-            <Text style={styles.brandIcon}>🪨</Text>
+            <Text style={styles.brandIcon}>⛰️</Text>
             <Text style={styles.brand}>위시스톤</Text>
           </View>
           <View style={styles.headerActions}>
@@ -228,7 +228,7 @@ export default function HomeScreen() {
           ]}
           onPress={() => router.push('/stack/stone')}
         >
-          <Text style={styles.stackMainButtonIcon}>🪨</Text>
+          <Text style={styles.stackMainButtonIcon}>⛰️</Text>
           <Text style={styles.stackMainButtonText}>소원 돌 올리기</Text>
         </Pressable>
       </View>

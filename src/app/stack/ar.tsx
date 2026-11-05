@@ -97,7 +97,7 @@ export default function PlaceStoneARScreen() {
 
       <View style={styles.bottomControls}>
         <Pressable style={styles.dragButton} onPress={handlePlaceInAR}>
-          <Text style={styles.dragButtonText}>[ 내 돌 🪨 올리기 ]</Text>
+          <Text style={styles.dragButtonText}>[ 내 소원 돌 올리기 ]</Text>
         </Pressable>
 
         <View style={styles.actionRow}>

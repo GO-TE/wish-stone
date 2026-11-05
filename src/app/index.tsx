@@ -29,7 +29,7 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>🪨 StoneWish</Text>
+      <Text style={styles.logo}>⛰️ StoneWish</Text>
       <Text style={styles.subtitle}>마음을 담아 돌을 쌓는 소원 돌탑</Text>
       <ActivityIndicator size="large" color="#D6C7B2" style={styles.spinner} />
       <Text style={styles.routeHint}>이동 예정: {state.nextRoute}</Text>

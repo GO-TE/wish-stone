@@ -19,7 +19,7 @@ export const EMOTIONAL_TOAST_PRESETS: Record<
     durationMs: 2600,
   },
   wish_deleted: {
-    text: '마음을 담은 돌을 조용히 내려놓았습니다 🪨',
+    text: '마음을 담은 돌을 조용히 내려놓았습니다 🌿',
     durationMs: 2800,
   },
   quota_charged: {
