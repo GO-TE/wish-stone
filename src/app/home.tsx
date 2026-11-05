@@ -170,10 +170,6 @@ export default function HomeScreen() {
               towerTopY={state.tower?.topY() ?? 1.0}
             />
           </View>
-
-          <Text style={styles.towerSubtext}>
-            터치하여 돌탑을 회전하고 소원을 살펴보세요
-          </Text>
         </View>
 
         {/* ④ 토스형 소원 카드 피드 */}
@@ -399,16 +395,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   canvasContainer: {
-    height: 220,
+    minHeight: 200,
+    width: '100%',
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  towerSubtext: {
-    ...TossTheme.typography.micro,
-    color: TossTheme.colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 8,
   },
   cardBox: {
     backgroundColor: TossTheme.colors.card,
