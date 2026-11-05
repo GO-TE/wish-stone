@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.stonewish.interaction.adapter.DefaultInteractionPersistenceAdapter;
 import com.stonewish.interaction.controller.InteractionController;
+import com.stonewish.interaction.entity.CheerEntity.CheerId;
+import com.stonewish.interaction.repository.CheerJpaRepository;
+import com.stonewish.interaction.repository.ReportJpaRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,10 +21,24 @@ class InteractionServiceApplicationTest {
     @Autowired
     private DefaultInteractionPersistenceAdapter adapter;
 
+    @Autowired
+    private CheerJpaRepository cheerJpaRepository;
+
+    @Autowired
+    private ReportJpaRepository reportJpaRepository;
+
     @Test
-    @DisplayName("N-07: interaction-service Spring Boot 애플리케이션 컨텍스트 기동 및 기본 어댑터 주입 스모크 테스트")
-    void contextLoads() {
+    @DisplayName("N-07 & Sprint 5: interaction-service JPA 엔티티(cheers, reports 테이블) 영속화 및 중복 검사 검증")
+    void contextLoadsAndJpaPersistenceWorks() {
         assertThat(interactionController).isNotNull();
-        assertThat(adapter).isNotNull();
+
+        adapter.registerWishSummary("wish-jpa-1", "author-1", 0);
+        adapter.saveCheer("wish-jpa-1", "cheerer-1");
+        assertThat(cheerJpaRepository.existsById(new CheerId("wish-jpa-1", "cheerer-1"))).isTrue();
+        assertThat(adapter.existsCheer("wish-jpa-1", "cheerer-1")).isTrue();
+
+        int reportCount = adapter.saveReportAndCount("wish-jpa-1", "reporter-1", "spam");
+        assertThat(reportCount).isEqualTo(1);
+        assertThat(reportJpaRepository.existsByWishIdAndReporterId("wish-jpa-1", "reporter-1")).isTrue();
     }
 }

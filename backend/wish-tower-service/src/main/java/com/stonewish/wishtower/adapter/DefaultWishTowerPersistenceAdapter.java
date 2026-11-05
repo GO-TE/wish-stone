@@ -1,104 +1,152 @@
 package com.stonewish.wishtower.adapter;
 
 import com.stonewish.wishtower.consumer.InteractionEventConsumer.WishEventProjectionHandler;
+import com.stonewish.wishtower.entity.DailyWishQuotaEntity;
+import com.stonewish.wishtower.entity.DailyWishQuotaEntity.QuotaId;
+import com.stonewish.wishtower.entity.ProcessedEventEntity;
+import com.stonewish.wishtower.entity.WishEntity;
+import com.stonewish.wishtower.repository.DailyWishQuotaJpaRepository;
+import com.stonewish.wishtower.repository.ProcessedEventJpaRepository;
+import com.stonewish.wishtower.repository.WishJpaRepository;
 import com.stonewish.wishtower.service.DailyWishQuotaService.DailyQuotaPort;
 import com.stonewish.wishtower.service.DailyWishQuotaService.QuotaState;
 import com.stonewish.wishtower.service.TowerQueryService.TowerQueryPort;
 import com.stonewish.wishtower.service.TowerQueryService.TowerStatsResponse;
 import com.stonewish.wishtower.service.WishCommandService.WishPersistencePort;
 import com.stonewish.wishtower.service.WishCommandService.WishRecord;
+import java.time.Instant;
 import java.time.LocalDate;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * N-07: wish-tower-service 기본 스레드 안전 영속성 및 통계/쿼터/이벤트 프로젝션 통합 어댑터
+ * Sprint 5: wish-tower-service Spring Data JPA 기반 영속성 및 통계/쿼터/이벤트 프로젝션 통합 어댑터
  */
 @Repository
+@Transactional
 public class DefaultWishTowerPersistenceAdapter
     implements WishPersistencePort, TowerQueryPort, DailyQuotaPort, WishEventProjectionHandler {
 
-    private final Map<String, WishRecord> wishes = new ConcurrentHashMap<>();
-    private final Map<String, String> bloomTypes = new ConcurrentHashMap<>();
-    private final Map<String, QuotaState> quotas = new ConcurrentHashMap<>();
-    private final Set<String> processedEventIds = ConcurrentHashMap.newKeySet();
+    private final WishJpaRepository wishRepository;
+    private final DailyWishQuotaJpaRepository quotaRepository;
+    private final ProcessedEventJpaRepository processedEventRepository;
 
     private final Map<String, AtomicLong> stoneCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> todayCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> fulfilledCounts = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> cheerCounts = new ConcurrentHashMap<>();
 
+    @Autowired
+    public DefaultWishTowerPersistenceAdapter(
+        WishJpaRepository wishRepository,
+        DailyWishQuotaJpaRepository quotaRepository,
+        ProcessedEventJpaRepository processedEventRepository
+    ) {
+        this.wishRepository = wishRepository;
+        this.quotaRepository = quotaRepository;
+        this.processedEventRepository = processedEventRepository;
+    }
+
     @Override
     public WishRecord save(WishRecord wish) {
-        WishRecord prev = wishes.put(wish.id(), wish);
+        Optional<WishEntity> prevOpt = wishRepository.findById(wish.id());
+        String existingBloom = prevOpt.map(WishEntity::getBloomType).orElse(null);
+        Instant fulfilledAt = "FULFILLED".equalsIgnoreCase(wish.status())
+            ? prevOpt.map(WishEntity::getFulfilledAt).orElse(Instant.now())
+            : null;
+
+        WishEntity saved = wishRepository.save(WishEntity.fromRecord(wish, existingBloom, fulfilledAt));
         String towerKey = resolveTowerKey(wish);
-        if (prev == null) {
+
+        if (prevOpt.isEmpty()) {
             stoneCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
             todayCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
             cheerCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).addAndGet(wish.cheerCount());
-        } else if (!"FULFILLED".equalsIgnoreCase(prev.status()) && "FULFILLED".equalsIgnoreCase(wish.status())) {
+        } else if (!"FULFILLED".equalsIgnoreCase(prevOpt.get().getStatus())
+            && "FULFILLED".equalsIgnoreCase(wish.status())) {
             fulfilledCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
         }
-        return wish;
+        return saved.toRecord();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public WishRecord findById(String wishId) {
-        return wishId != null ? wishes.get(wishId) : null;
-    }
-
-    @Override
-    public List<WishRecord> findByTowerKey(String towerKey) {
-        List<WishRecord> result = new ArrayList<>();
-        for (WishRecord w : wishes.values()) {
-            if ("global".equals(towerKey) && (w.groupId() == null || w.groupId().isBlank())) {
-                result.add(w);
-            } else if (towerKey != null && towerKey.startsWith("cat:") && (w.groupId() == null || w.groupId().isBlank())) {
-                String cat = towerKey.substring(4);
-                if (cat.equals(w.categoryCode())) {
-                    result.add(w);
-                }
-            } else if (towerKey != null && towerKey.startsWith("group:")) {
-                String gid = towerKey.substring(6);
-                if (gid.equals(w.groupId())) {
-                    result.add(w);
-                }
-            }
+        if (wishId == null) {
+            return null;
         }
-        return result;
+        return wishRepository.findById(wishId)
+            .map(WishEntity::toRecord)
+            .orElse(null);
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<WishRecord> findByTowerKey(String towerKey) {
+        if ("global".equals(towerKey)) {
+            return wishRepository.findByGroupIdIsNull().stream()
+                .map(WishEntity::toRecord)
+                .toList();
+        }
+        if (towerKey != null && towerKey.startsWith("cat:")) {
+            String cat = towerKey.substring(4);
+            return wishRepository.findByGroupIdIsNullAndCategoryCode(cat).stream()
+                .map(WishEntity::toRecord)
+                .toList();
+        }
+        if (towerKey != null && towerKey.startsWith("group:")) {
+            String gid = towerKey.substring(6);
+            return wishRepository.findByGroupId(gid).stream()
+                .map(WishEntity::toRecord)
+                .toList();
+        }
+        return Collections.emptyList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<WishRecord> findAllPublicActiveWishes() {
-        return wishes.values().stream()
-            .filter(w -> w.groupId() == null || w.groupId().isBlank())
-            .filter(w -> "ACTIVE".equalsIgnoreCase(w.status()))
+        return wishRepository.findByGroupIdIsNullAndStatus("ACTIVE").stream()
+            .map(WishEntity::toRecord)
             .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<WishRecord> findByUserId(String userId) {
-        return wishes.values().stream()
-            .filter(w -> userId.equals(w.userId()))
+        return wishRepository.findByUserId(userId).stream()
+            .map(WishEntity::toRecord)
             .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public String findBloomType(String wishId) {
-        return bloomTypes.get(wishId);
+        return wishRepository.findById(wishId)
+            .map(WishEntity::getBloomType)
+            .orElse(null);
     }
 
     @Override
     public void saveBloomType(String wishId, String bloomType) {
-        bloomTypes.put(wishId, bloomType);
+        wishRepository.findById(wishId).ifPresent(entity -> {
+            entity.setBloomType(bloomType);
+            if (entity.getFulfilledAt() == null) {
+                entity.setFulfilledAt(Instant.now());
+            }
+            wishRepository.save(entity);
+        });
     }
 
     @Override
+    @Transactional(readOnly = true)
     public TowerStatsResponse getStats(String towerKey) {
         return new TowerStatsResponse(
             towerKey,
@@ -117,73 +165,51 @@ public class DefaultWishTowerPersistenceAdapter
 
     @Override
     public QuotaState findOrInit(String userId, LocalDate date, int defaultBaseQuota) {
-        String key = userId + ":" + date;
-        return quotas.computeIfAbsent(
-            key,
-            k -> new QuotaState(userId, date, defaultBaseQuota, 0, 0)
-        );
+        QuotaId id = new QuotaId(userId, date);
+        return quotaRepository.findById(id)
+            .map(DailyWishQuotaEntity::toDomain)
+            .orElseGet(() -> {
+                QuotaState initialized = new QuotaState(userId, date, defaultBaseQuota, 0, 0);
+                quotaRepository.save(DailyWishQuotaEntity.fromDomain(initialized));
+                return initialized;
+            });
     }
 
     @Override
     public QuotaState save(QuotaState state) {
-        quotas.put(state.userId() + ":" + state.date(), state);
-        return state;
+        DailyWishQuotaEntity saved = quotaRepository.save(DailyWishQuotaEntity.fromDomain(state));
+        return saved.toDomain();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public boolean isAlreadyProcessed(String eventId) {
-        return eventId != null && processedEventIds.contains(eventId);
+        return eventId != null && processedEventRepository.existsById(eventId);
     }
 
     @Override
     public void markProcessed(String eventId, String eventType) {
         if (eventId != null) {
-            processedEventIds.add(eventId);
+            processedEventRepository.save(new ProcessedEventEntity(eventId, eventType, Instant.now()));
         }
     }
 
     @Override
     public void incrementCheerCountAndStats(String wishId) {
-        WishRecord existing = wishes.get(wishId);
-        if (existing != null) {
-            WishRecord updated = new WishRecord(
-                existing.id(),
-                existing.userId(),
-                existing.groupId(),
-                existing.categoryCode(),
-                existing.content(),
-                existing.stoneShape(),
-                existing.stoneColor(),
-                existing.poseJson(),
-                existing.cheerCount() + 1,
-                existing.status(),
-                existing.createdAt()
-            );
-            wishes.put(wishId, updated);
-            String towerKey = resolveTowerKey(existing);
+        wishRepository.findById(wishId).ifPresent(entity -> {
+            entity.incrementCheerCount();
+            wishRepository.save(entity);
+            String towerKey = resolveTowerKey(entity.toRecord());
             cheerCounts.computeIfAbsent(towerKey, k -> new AtomicLong()).incrementAndGet();
-        }
+        });
     }
 
     @Override
     public void hideWishByReportThreshold(String wishId) {
-        WishRecord existing = wishes.get(wishId);
-        if (existing != null) {
-            WishRecord hidden = new WishRecord(
-                existing.id(),
-                existing.userId(),
-                existing.groupId(),
-                existing.categoryCode(),
-                existing.content(),
-                existing.stoneShape(),
-                existing.stoneColor(),
-                existing.poseJson(),
-                existing.cheerCount(),
-                "HIDDEN",
-                existing.createdAt()
-            );
-            wishes.put(wishId, hidden);
-        }
+        wishRepository.findById(wishId).ifPresent(entity -> {
+            entity.setStatus("HIDDEN");
+            wishRepository.save(entity);
+        });
     }
 
     private static String resolveTowerKey(WishRecord wish) {

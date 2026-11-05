@@ -4,6 +4,14 @@ server:
 spring:
   application:
     name: group-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:group_db;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=GROUPS,USER,VALUE}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
 
 stonewish:
   group:

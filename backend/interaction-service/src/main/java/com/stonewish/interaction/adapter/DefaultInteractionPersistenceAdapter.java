@@ -1,43 +1,59 @@
 package com.stonewish.interaction.adapter;
 
+import com.stonewish.interaction.entity.CheerEntity;
+import com.stonewish.interaction.entity.ReportEntity;
+import com.stonewish.interaction.repository.CheerJpaRepository;
+import com.stonewish.interaction.repository.ReportJpaRepository;
 import com.stonewish.interaction.service.CheerCommandService.CheerPersistencePort;
 import com.stonewish.interaction.service.CheerCommandService.WishSummary;
 import com.stonewish.interaction.service.ReportCommandService.ReportPersistencePort;
+import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * N-07: interaction-service 기본 스레드 안전 영속성 어댑터 (응원 및 신고 중복 방지 / 카운트)
+ * Sprint 5: interaction-service Spring Data JPA 기반 영속성 어댑터 (cheers / reports 테이블 연동)
  */
 @Repository
+@Transactional
 public class DefaultInteractionPersistenceAdapter
     implements CheerPersistencePort, ReportPersistencePort {
 
+    private final CheerJpaRepository cheerRepository;
+    private final ReportJpaRepository reportRepository;
     private final Map<String, WishSummary> wishSummaries = new ConcurrentHashMap<>();
-    private final Set<String> cheerKeys = ConcurrentHashMap.newKeySet();
-    private final Set<String> reportKeys = ConcurrentHashMap.newKeySet();
-    private final Map<String, AtomicInteger> reportCounts = new ConcurrentHashMap<>();
+
+    @Autowired
+    public DefaultInteractionPersistenceAdapter(
+        CheerJpaRepository cheerRepository,
+        ReportJpaRepository reportRepository
+    ) {
+        this.cheerRepository = cheerRepository;
+        this.reportRepository = reportRepository;
+    }
 
     public void registerWishSummary(String wishId, String authorId, int currentCheerCount) {
         wishSummaries.put(wishId, new WishSummary(wishId, authorId, currentCheerCount));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public WishSummary fetchWishSummary(String wishId) {
         return wishId != null ? wishSummaries.get(wishId) : null;
     }
 
     @Override
+    @Transactional(readOnly = true)
     public boolean existsCheer(String wishId, String userId) {
-        return cheerKeys.contains(wishId + ":" + userId);
+        return cheerRepository.existsByWishIdAndUserId(wishId, userId);
     }
 
     @Override
     public void saveCheer(String wishId, String userId) {
-        cheerKeys.add(wishId + ":" + userId);
+        cheerRepository.save(new CheerEntity(wishId, userId, Instant.now()));
         wishSummaries.computeIfPresent(
             wishId,
             (k, prev) -> new WishSummary(prev.wishId(), prev.authorId(), prev.currentCheerCount() + 1)
@@ -45,13 +61,17 @@ public class DefaultInteractionPersistenceAdapter
     }
 
     @Override
+    @Transactional(readOnly = true)
     public boolean existsReport(String wishId, String reporterUserId) {
-        return reportKeys.contains(wishId + ":" + reporterUserId);
+        return reportRepository.existsByWishIdAndReporterId(wishId, reporterUserId);
     }
 
     @Override
     public int saveReportAndCount(String wishId, String reporterUserId, String reason) {
-        reportKeys.add(wishId + ":" + reporterUserId);
-        return reportCounts.computeIfAbsent(wishId, k -> new AtomicInteger(0)).incrementAndGet();
+        String normalizedReason = reason != null && reason.length() > 30
+            ? reason.substring(0, 30)
+            : reason;
+        reportRepository.save(new ReportEntity(wishId, reporterUserId, normalizedReason, Instant.now()));
+        return (int) reportRepository.countByWishId(wishId);
     }
 }
