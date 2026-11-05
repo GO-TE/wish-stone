@@ -4,3 +4,8 @@ server:
 spring:
   application:
     name: user-auth-service
+
+stonewish:
+  jwt:
+    secret: ${STONEWISH_JWT_SECRET:stonewish-default-hmac-sha256-secret-key-2026-secure}
+    ttl-seconds: ${STONEWISH_JWT_TTL_SECONDS:604800}

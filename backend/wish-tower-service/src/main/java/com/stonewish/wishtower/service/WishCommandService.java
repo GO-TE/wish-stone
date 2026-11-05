@@ -6,6 +6,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -60,6 +61,7 @@ public class WishCommandService {
     private final DailyWishQuotaService quotaService;
     private final List<String> forbiddenWords;
 
+    @Autowired
     public WishCommandService(
         WishPersistencePort persistencePort,
         CategoryAutoClassifier autoClassifier,

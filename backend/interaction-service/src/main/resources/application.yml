@@ -1,0 +1,19 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: interaction-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:false}
+
+stonewish:
+  cheer:
+    threshold:
+      level1: 1
+      level2: 5
+      level3: 15
+  report:
+    auto-hide-threshold: 5

@@ -4,3 +4,7 @@ server:
 spring:
   application:
     name: group-service
+
+stonewish:
+  group:
+    default-max-members: 50

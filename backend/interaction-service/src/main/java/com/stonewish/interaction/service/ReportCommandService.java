@@ -4,6 +4,7 @@ import com.stonewish.events.StoneWishEvents.WishReportThresholdReachedEvent;
 import com.stonewish.interaction.service.CheerCommandService.WishSummary;
 import java.time.Instant;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class ReportCommandService {
         this(persistencePort, kafkaTemplate, 5);
     }
 
+    @Autowired
     public ReportCommandService(
         ReportPersistencePort persistencePort,
         KafkaTemplate<String, Object> kafkaTemplate,
