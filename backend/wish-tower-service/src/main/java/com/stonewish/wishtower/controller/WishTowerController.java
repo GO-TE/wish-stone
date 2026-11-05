@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -265,19 +266,28 @@ public class WishTowerController {
     @RestControllerAdvice(assignableTypes = WishTowerController.class)
     public static class WishTowerExceptionHandler {
 
+        @ExceptionHandler(MissingRequestHeaderException.class)
+        public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("UNAUTHORIZED", "인증 헤더가 누락되었습니다: " + ex.getHeaderName()));
+        }
+
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
-            HttpStatus status = "WISH_NOT_FOUND".equals(ex.getMessage())
-                ? HttpStatus.NOT_FOUND
-                : HttpStatus.BAD_REQUEST;
+            HttpStatus status = switch (ex.getMessage()) {
+                case "WISH_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                case "USER_ID_REQUIRED" -> HttpStatus.UNAUTHORIZED;
+                default -> HttpStatus.BAD_REQUEST;
+            };
+            String code = "USER_ID_REQUIRED".equals(ex.getMessage()) ? "UNAUTHORIZED" : ex.getMessage();
             return ResponseEntity.status(status)
-                .body(new ErrorResponse(ex.getMessage(), ex.getMessage()));
+                .body(new ErrorResponse(code, ex.getMessage()));
         }
 
         @ExceptionHandler(IllegalStateException.class)
         public ResponseEntity<ErrorResponse> handleStateError(IllegalStateException ex) {
             HttpStatus status = switch (ex.getMessage()) {
-                case "GUEST_GROUP_FORBIDDEN", "NOT_OWNER" -> HttpStatus.FORBIDDEN;
+                case "GUEST_GROUP_FORBIDDEN", "NOT_OWNER", "NOT_GROUP_MEMBER" -> HttpStatus.FORBIDDEN;
                 case "DAILY_QUOTA_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
                 default -> HttpStatus.CONFLICT;
             };

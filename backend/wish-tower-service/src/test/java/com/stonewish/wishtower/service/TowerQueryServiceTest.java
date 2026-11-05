@@ -3,7 +3,11 @@ package com.stonewish.wishtower.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.stonewish.wishtower.client.GroupMembershipFeignClient;
 import com.stonewish.wishtower.client.UserAuthFeignClient;
+import com.stonewish.wishtower.controller.WishTowerController;
+import com.stonewish.wishtower.controller.WishTowerController.ErrorResponse;
+import com.stonewish.wishtower.controller.WishTowerController.WishTowerExceptionHandler;
 import com.stonewish.wishtower.service.TowerQueryService.AnonymousWishCard;
 import com.stonewish.wishtower.service.TowerQueryService.CollapseMetadata;
 import com.stonewish.wishtower.service.TowerQueryService.FulfillWishResult;
@@ -18,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,18 +30,24 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 
 class TowerQueryServiceTest {
 
     private InMemoryTowerQueryAdapter queryPort;
     private ConfigurableFeignClient feignClient;
+    private ConfigurableGroupMembershipClient groupMembershipClient;
     private TowerQueryService service;
 
     @BeforeEach
     void setUp() {
         queryPort = new InMemoryTowerQueryAdapter();
         feignClient = new ConfigurableFeignClient();
-        service = new TowerQueryService(queryPort, feignClient);
+        groupMembershipClient = new ConfigurableGroupMembershipClient();
+        service = new TowerQueryService(queryPort, feignClient, groupMembershipClient);
     }
 
     @Test
@@ -79,15 +90,30 @@ class TowerQueryServiceTest {
     }
 
     @Test
-    @DisplayName("API-03 지인 그룹 돌탑 조회 (M-02): UserAuthFeignClient로 nickname('닉네임#태그')을 배치 해석하고, 장애 시 '익명의 그룹원'으로 폴백한다")
-    void getGroupTower_resolvesNicknameTagAndFallsBackOnFeignFailure() {
+    @DisplayName("API-03 지인 그룹 돌탑 조회 (M-02, N-06): 그룹원만 접근 허용되며, 비그룹원 및 group-service 장애 시 403 NOT_GROUP_MEMBER로 차단된다")
+    void getGroupTower_enforcesMembershipAndResolvesNicknameTagWithFallback() {
         Instant t1 = Instant.parse("2026-11-05T01:00:00Z");
         Instant t2 = Instant.parse("2026-11-05T02:00:00Z");
 
         queryPort.addWish(new WishRecord("gw-1", "u-100", "grp-1", "job", "같이 합격하자", "round", "#111", "{}", 15, "ACTIVE", t1));
         queryPort.addWish(new WishRecord("gw-2", "u-200", "grp-1", "health", "모두 건강하길", "tall", "#222", "{}", 0, "ACTIVE", t2));
 
-        // 1) 정상 응답 시 '닉네임#태그' 매핑 확인
+        groupMembershipClient.memberships.add("grp-1:u-100");
+        groupMembershipClient.memberships.add("grp-1:u-200");
+
+        // 0) N-06: 비그룹원이 조회 시도 시 NOT_GROUP_MEMBER (403 FORBIDDEN) 차단
+        WishTowerExceptionHandler advice = new WishTowerExceptionHandler();
+        assertThatThrownBy(() -> service.getTower("group:grp-1", "outsider-999", 200))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("NOT_GROUP_MEMBER");
+
+        ResponseEntity<ErrorResponse> forbiddenResp = advice.handleStateError(
+            new IllegalStateException("NOT_GROUP_MEMBER")
+        );
+        assertThat(forbiddenResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(forbiddenResp.getBody().code()).isEqualTo("NOT_GROUP_MEMBER");
+
+        // 1) 그룹원 정상 응답 시 '닉네임#태그' 매핑 확인
         feignClient.nicknames.put("u-100", "소원빌기#0412");
         feignClient.nicknames.put("u-200", "돌탑장인#9981");
 
@@ -103,6 +129,12 @@ class TowerQueryServiceTest {
         assertThat(fallbackResp.stones()).hasSize(2);
         assertThat(fallbackResp.stones().get(0).nickname()).isEqualTo("익명의 그룹원");
         assertThat(fallbackResp.stones().get(1).nickname()).isEqualTo("익명의 그룹원");
+
+        // 3) N-06: group-service 장애 시 Fail-Closed(접근 거부 -> NOT_GROUP_MEMBER) 확인
+        groupMembershipClient.shouldFail = true;
+        assertThatThrownBy(() -> service.getTower("group:grp-1", "u-100", 200))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("NOT_GROUP_MEMBER");
     }
 
     @Test
@@ -130,8 +162,8 @@ class TowerQueryServiceTest {
     }
 
     @Test
-    @DisplayName("API-04, API-09, API-10, API-11 (M-03, M-05, M-08): 성취/삭제 권한 검증, flower|sprout|moss 개화 타입, 내 소원 status 필터 및 통계 필드 검증")
-    void fulfillAndDeleteWish_enforcesOwnershipAndReturnsCollapseMetadata() {
+    @DisplayName("API-04, API-09, API-10, API-11 (M-03, M-05, M-08, N-04): 성취/삭제 권한 검증, flower|sprout|moss 개화 타입, 내 소원 status 필터 및 UNAUTHORIZED 검증")
+    void fulfillAndDeleteWish_enforcesOwnershipAndReturnsCollapseMetadata() throws Exception {
         Instant t1 = Instant.parse("2026-11-05T01:00:00Z");
         Instant t2 = Instant.parse("2026-11-05T02:00:00Z");
         Instant t3 = Instant.parse("2026-11-05T03:00:00Z");
@@ -179,6 +211,17 @@ class TowerQueryServiceTest {
 
         // 삭제 후 내 소원 목록에서 제외됨 확인
         assertThat(service.getMyWishes("user-owner")).isEmpty();
+
+        // N-04: X-User-Id 헤더 누락 시 401 UNAUTHORIZED 응답 검증
+        WishTowerExceptionHandler advice = new WishTowerExceptionHandler();
+        MethodParameter param = new MethodParameter(
+            WishTowerController.class.getMethod("getMyWishes", String.class, String.class), 0
+        );
+        ResponseEntity<ErrorResponse> unauthResp = advice.handleMissingHeader(
+            new MissingRequestHeaderException("X-User-Id", param)
+        );
+        assertThat(unauthResp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(unauthResp.getBody().code()).isEqualTo("UNAUTHORIZED");
     }
 
     static class ConfigurableFeignClient implements UserAuthFeignClient {
@@ -197,6 +240,19 @@ class TowerQueryServiceTest {
                 }
             }
             return result;
+        }
+    }
+
+    static class ConfigurableGroupMembershipClient implements GroupMembershipFeignClient {
+        final Set<String> memberships = new HashSet<>();
+        boolean shouldFail = false;
+
+        @Override
+        public Map<String, Boolean> checkMembership(String groupId, String userId) {
+            if (shouldFail) {
+                throw new RuntimeException("group-service connection timeout");
+            }
+            return Map.of("exists", memberships.contains(groupId + ":" + userId));
         }
     }
 

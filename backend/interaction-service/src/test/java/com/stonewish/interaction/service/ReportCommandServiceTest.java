@@ -20,11 +20,13 @@ import org.apache.kafka.clients.producer.Producer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.SendResult;
+import org.springframework.web.bind.MissingRequestHeaderException;
 
 class ReportCommandServiceTest {
 
@@ -41,7 +43,7 @@ class ReportCommandServiceTest {
     }
 
     @Test
-    @DisplayName("DB-018: 본인 소원 신고 시 SELF_REPORT_FORBIDDEN 예외가 발생하고, 동일 유저의 중복 신고 시 DUPLICATE_REPORT 예외가 발생한다")
+    @DisplayName("DB-018 & N-02: 본인 소원 신고 시 SELF_REPORT_FORBIDDEN 예외가 발생하고, 동일 유저의 중복 신고 시 ALREADY_REPORTED 예외가 발생한다")
     void reportWish_preventsSelfReportAndDuplicateReport() {
         // 1) 본인 소원 신고 차단
         assertThatThrownBy(() -> reportService.reportWish("wish-500", "author-1", "스팸"))
@@ -54,10 +56,10 @@ class ReportCommandServiceTest {
         assertThat(first.blindTriggered()).isFalse();
         assertThat(kafkaTemplate.lastEvent).isNull();
 
-        // 3) 동일 타인의 중복 신고 차단
+        // 3) 동일 타인의 중복 신고 차단 (N-02: ALREADY_REPORTED)
         assertThatThrownBy(() -> reportService.reportWish("wish-500", "reporter-1", "또 신고"))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessage("DUPLICATE_REPORT");
+            .hasMessage("ALREADY_REPORTED");
     }
 
     @Test
@@ -84,8 +86,8 @@ class ReportCommandServiceTest {
     }
 
     @Test
-    @DisplayName("InteractionController 및 @RestControllerAdvice: SELF_CHEER_FORBIDDEN, DUPLICATE_REPORT 등 에러 코드 매핑 검증")
-    void interactionController_mapsErrorsCorrectly() {
+    @DisplayName("N-02 & N-04: InteractionExceptionHandler에서 CANNOT_CHEER_OWN(403), ALREADY_REPORTED(409), UNAUTHORIZED(401) 매핑 검증")
+    void interactionController_mapsErrorsCorrectly() throws Exception {
         CheerCommandServiceTest.FakePersistencePort cheerPort = new CheerCommandServiceTest.FakePersistencePort();
         cheerPort.summary = new WishSummary("wish-500", "author-1", 0);
         CheerCommandService cheerService = new CheerCommandService(cheerPort, kafkaTemplate);
@@ -97,19 +99,29 @@ class ReportCommandServiceTest {
         ReportResult result = controller.reportWish("wish-500", "user-2", new ReportWishRequest("불쾌한 표현"));
         assertThat(result.cumulativeReportCount()).isEqualTo(1);
 
-        // 본인 소원 응원 시 CANNOT_CHEER_OWN -> SELF_CHEER_FORBIDDEN (403) 매핑 검증
+        // N-02: 본인 소원 응원 시 CANNOT_CHEER_OWN (403) 매핑 검증
         ResponseEntity<ErrorResponse> selfCheerResp = advice.handleStateConflict(
             new IllegalStateException("CANNOT_CHEER_OWN")
         );
         assertThat(selfCheerResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(selfCheerResp.getBody().code()).isEqualTo("SELF_CHEER_FORBIDDEN");
+        assertThat(selfCheerResp.getBody().code()).isEqualTo("CANNOT_CHEER_OWN");
 
-        // 중복 신고 DUPLICATE_REPORT (409) 매핑 검증
+        // N-02: 중복 신고 ALREADY_REPORTED (409) 매핑 검증
         ResponseEntity<ErrorResponse> dupReportResp = advice.handleStateConflict(
-            new IllegalStateException("DUPLICATE_REPORT")
+            new IllegalStateException("ALREADY_REPORTED")
         );
         assertThat(dupReportResp.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(dupReportResp.getBody().code()).isEqualTo("DUPLICATE_REPORT");
+        assertThat(dupReportResp.getBody().code()).isEqualTo("ALREADY_REPORTED");
+
+        // N-04: X-User-Id 헤더 누락 시 401 UNAUTHORIZED 매핑 검증
+        MethodParameter param = new MethodParameter(
+            InteractionController.class.getMethod("cheerWish", String.class, String.class), 1
+        );
+        ResponseEntity<ErrorResponse> unauthResp = advice.handleMissingHeader(
+            new MissingRequestHeaderException("X-User-Id", param)
+        );
+        assertThat(unauthResp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(unauthResp.getBody().code()).isEqualTo("UNAUTHORIZED");
     }
 
     static class InMemoryReportPort implements ReportPersistencePort {

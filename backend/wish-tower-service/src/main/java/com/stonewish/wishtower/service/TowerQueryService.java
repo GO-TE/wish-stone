@@ -1,5 +1,6 @@
 package com.stonewish.wishtower.service;
 
+import com.stonewish.wishtower.client.GroupMembershipFeignClient;
 import com.stonewish.wishtower.client.UserAuthFeignClient;
 import com.stonewish.wishtower.client.UserAuthFeignClient.NicknameBatchRequest;
 import com.stonewish.wishtower.service.WishCommandService.WishRecord;
@@ -13,14 +14,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
  * [사수 멘토링 포인트 - 돌탑 조회(익명성 vs 지인 그룹 실명), 랜덤 소원 풀, 성취/삭제 생명주기 서비스]
  * 1) 공개 돌탑 익명성 보장(D-001): global / cat:* 돌탑과 랜덤 소원 카드에서는 작성자 userId를 응답 DTO에서 원천 제거하고,
  *    nickname도 null로 내려 완전 익명을 보장합니다.
- * 2) 지인 그룹 돌탑 닉네임#태그 해석(D-003): towerKey가 "group:"으로 시작할 때만 UserAuthFeignClient로 배치 조회하며,
- *    user-auth-service 장애 시 서킷브레이커 폴백("익명의 그룹원")으로 돌탑 렌더링 중단을 방지합니다.
+ * 2) 지인 그룹 돌탑 권한 검증(N-06) & 닉네임#태그 해석(D-003): towerKey가 "group:"으로 시작할 때는
+ *    먼저 GroupMembershipFeignClient로 그룹원 여부를 확인(비그룹원 또는 장애 시 403 NOT_GROUP_MEMBER 차단)한 뒤,
+ *    UserAuthFeignClient로 배치 조회하며 user-auth-service 장애 시 서킷브레이커 폴백("익명의 그룹원")을 적용합니다.
  * 3) 소원 삭제 시 물리 붕괴 메타데이터 반환: 돌이 삭제(Soft Delete)되면 돌탑 통계 카운터를 원자적으로 차감하고,
  *    클라이언트 물리 엔진이 `tower_collapsed` 재정렬 연출을 즉시 트리거할 수 있도록 붕괴 층수(collapsedFloorIndex)를 반환합니다.
  */
@@ -184,19 +187,38 @@ public class TowerQueryService {
 
     private final TowerQueryPort queryPort;
     private final UserAuthFeignClient userAuthFeignClient;
+    private final GroupMembershipFeignClient groupMembershipFeignClient;
 
     public TowerQueryService(TowerQueryPort queryPort, UserAuthFeignClient userAuthFeignClient) {
+        this(queryPort, userAuthFeignClient, null);
+    }
+
+    @Autowired
+    public TowerQueryService(
+        TowerQueryPort queryPort,
+        UserAuthFeignClient userAuthFeignClient,
+        GroupMembershipFeignClient groupMembershipFeignClient
+    ) {
         this.queryPort = queryPort;
         this.userAuthFeignClient = userAuthFeignClient;
+        this.groupMembershipFeignClient = groupMembershipFeignClient;
     }
 
     /**
      * API-03: 돌탑 돌 목록 조회 (GET /api/v1/towers/{towerKey})
      * - 생성 시각(floorIndex) 오름차순 정렬
      * - 공개 돌탑(global, cat:*): nickname = null (완전 익명)
-     * - 그룹 돌탑(group:{id}): UserAuthFeignClient 배치 호출로 "닉네임#태그" 주입 (장애 시 "익명의 그룹원" 폴백)
+     * - 그룹 돌탑(group:{id}):
+     *   1) N-06: GroupMembershipFeignClient로 그룹원 여부 검증 (비그룹원 또는 장애 시 NOT_GROUP_MEMBER 403 예외)
+     *   2) UserAuthFeignClient 배치 호출로 "닉네임#태그" 주입 (장애 시 "익명의 그룹원" 폴백)
      */
     public TowerViewResponse getTower(String towerKey, String callerUserId, int limit) {
+        boolean isGroupTower = towerKey != null && towerKey.startsWith("group:");
+        if (isGroupTower) {
+            String groupId = towerKey.substring(6);
+            verifyGroupMembership(groupId, callerUserId);
+        }
+
         int effectiveLimit = limit > 0 ? Math.min(limit, 500) : 200;
         List<WishRecord> rawStones = queryPort.findByTowerKey(towerKey).stream()
             .filter(w -> isActiveOrFulfilled(w.status()))
@@ -206,7 +228,6 @@ public class TowerQueryService {
         boolean hasMore = rawStones.size() > effectiveLimit;
         List<WishRecord> sliced = hasMore ? rawStones.subList(0, effectiveLimit) : rawStones;
 
-        boolean isGroupTower = towerKey != null && towerKey.startsWith("group:");
         Map<String, String> nicknameMap = Collections.emptyMap();
         if (isGroupTower && !sliced.isEmpty()) {
             List<String> distinctUserIds = sliced.stream()
@@ -249,6 +270,24 @@ public class TowerQueryService {
         }
 
         return new TowerViewResponse(towerKey, stoneViews, hasMore);
+    }
+
+    private void verifyGroupMembership(String groupId, String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) {
+            throw new IllegalStateException("NOT_GROUP_MEMBER");
+        }
+        if (groupMembershipFeignClient == null) {
+            return;
+        }
+        Map<String, Boolean> result;
+        try {
+            result = groupMembershipFeignClient.checkMembership(groupId, callerUserId);
+        } catch (Throwable ex) {
+            result = groupMembershipFeignClient.fallbackMembership(groupId, callerUserId, ex);
+        }
+        if (result == null || !Boolean.TRUE.equals(result.get("exists"))) {
+            throw new IllegalStateException("NOT_GROUP_MEMBER");
+        }
     }
 
     /**

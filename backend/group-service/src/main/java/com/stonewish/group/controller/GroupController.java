@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -93,14 +94,22 @@ public class GroupController {
     @RestControllerAdvice(assignableTypes = GroupController.class)
     public static class GroupExceptionHandler {
 
+        @ExceptionHandler(MissingRequestHeaderException.class)
+        public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("UNAUTHORIZED", "인증 헤더가 누락되었습니다: " + ex.getHeaderName()));
+        }
+
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
             HttpStatus status = switch (ex.getMessage()) {
                 case "GROUP_NOT_FOUND", "INVITE_INVALID" -> HttpStatus.NOT_FOUND;
+                case "USER_ID_REQUIRED" -> HttpStatus.UNAUTHORIZED;
                 default -> HttpStatus.BAD_REQUEST;
             };
+            String code = "USER_ID_REQUIRED".equals(ex.getMessage()) ? "UNAUTHORIZED" : ex.getMessage();
             return ResponseEntity.status(status)
-                .body(new ErrorResponse(ex.getMessage(), ex.getMessage()));
+                .body(new ErrorResponse(code, ex.getMessage()));
         }
 
         @ExceptionHandler(IllegalStateException.class)

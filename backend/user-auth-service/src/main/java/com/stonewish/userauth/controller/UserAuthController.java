@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -97,6 +98,12 @@ public class UserAuthController {
 
     @RestControllerAdvice(assignableTypes = UserAuthController.class)
     public static class UserAuthExceptionHandler {
+
+        @ExceptionHandler(MissingRequestHeaderException.class)
+        public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("UNAUTHORIZED", "인증 헤더가 누락되었습니다: " + ex.getHeaderName()));
+        }
 
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {

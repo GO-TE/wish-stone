@@ -6,9 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonewish.userauth.controller.UserAuthController;
+import com.stonewish.userauth.controller.UserAuthController.ErrorResponse;
 import com.stonewish.userauth.controller.UserAuthController.LinkSocialRequest;
 import com.stonewish.userauth.controller.UserAuthController.LoginRequest;
+import com.stonewish.userauth.controller.UserAuthController.UserAuthExceptionHandler;
 import com.stonewish.userauth.service.UserAccountService.AuthTokenResult;
 import com.stonewish.userauth.service.UserAccountService.UserAccount;
 import com.stonewish.userauth.service.UserAccountService.UserAccountPort;
@@ -20,6 +24,10 @@ import java.util.Random;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 
 class UserAccountServiceTest {
 
@@ -64,8 +72,8 @@ class UserAccountServiceTest {
     }
 
     @Test
-    @DisplayName("D-007 & M-06: 게스트 계정을 소셜 계정으로 연결(link)하면 기존 userId와 닉네임#태그가 보존된 채 새 토큰({accessToken, user})이 발급된다")
-    void linkGuestToSocialPreservesUserIdAndNickname() {
+    @DisplayName("D-007 & M-06 & N-09: 게스트 계정을 소셜 계정으로 연결(link)하면 기존 userId와 닉네임#태그가 보존된 채 새 토큰({accessToken, user:{isGuest, tag}})이 직렬화된다")
+    void linkGuestToSocialPreservesUserIdAndNickname() throws Exception {
         service.updateNicknameAndTag("user-1", "돌탑지기#real");
         AuthTokenResult linkedResult = controller.linkSocial("user-1", new LinkSocialRequest("kakao"));
 
@@ -75,11 +83,19 @@ class UserAccountServiceTest {
         assertEquals("돌탑지기#real", linkedResult.user().displayName());
         assertFalse(linkedResult.user().isGuest());
         assertEquals("kakao", linkedResult.user().linkedProvider());
+
+        // N-09: JSON 직렬화 시 isGuest, tag, nickname, accessToken 키 검증
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode json = mapper.readTree(mapper.writeValueAsString(linkedResult));
+        assertTrue(json.has("accessToken"));
+        assertTrue(json.get("user").has("isGuest"));
+        assertFalse(json.get("user").get("isGuest").asBoolean());
+        assertEquals("real", json.get("user").get("tag").asText());
     }
 
     @Test
-    @DisplayName("M-06 & SCR-18: 게스트/소셜 로그인(POST /api/v1/auth/login), 내 프로필 조회(GET /api/v1/users/me), 회원 탈퇴(DELETE /api/v1/users/me) 검증")
-    void loginGetMeAndWithdrawAccount() {
+    @DisplayName("M-06 & SCR-18 & N-04: 게스트/소셜 로그인, 내 프로필 조회, 회원 탈퇴, X-User-Id 누락 시 401 UNAUTHORIZED 검증")
+    void loginGetMeAndWithdrawAccount() throws Exception {
         AuthTokenResult loginRes = controller.login(new LoginRequest("guest"));
         String uid = loginRes.user().id();
         assertTrue(loginRes.user().isGuest());
@@ -94,6 +110,17 @@ class UserAccountServiceTest {
             IllegalArgumentException.class,
             () -> controller.getMe(uid)
         );
+
+        // N-04: X-User-Id 헤더 누락 시 401 UNAUTHORIZED 응답 검증
+        UserAuthExceptionHandler advice = new UserAuthExceptionHandler();
+        MethodParameter param = new MethodParameter(
+            UserAuthController.class.getMethod("getMe", String.class), 0
+        );
+        ResponseEntity<ErrorResponse> unauthResp = advice.handleMissingHeader(
+            new MissingRequestHeaderException("X-User-Id", param)
+        );
+        assertEquals(HttpStatus.UNAUTHORIZED, unauthResp.getStatusCode());
+        assertEquals("UNAUTHORIZED", unauthResp.getBody().code());
     }
 
     @Test

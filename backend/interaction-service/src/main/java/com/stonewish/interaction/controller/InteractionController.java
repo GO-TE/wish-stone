@@ -6,6 +6,7 @@ import com.stonewish.interaction.service.ReportCommandService;
 import com.stonewish.interaction.service.ReportCommandService.ReportResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -61,6 +62,12 @@ public class InteractionController {
     @RestControllerAdvice(assignableTypes = InteractionController.class)
     public static class InteractionExceptionHandler {
 
+        @ExceptionHandler(MissingRequestHeaderException.class)
+        public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("UNAUTHORIZED", "인증 헤더가 누락되었습니다: " + ex.getHeaderName()));
+        }
+
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
             HttpStatus status = "WISH_NOT_FOUND".equals(ex.getMessage())
@@ -72,15 +79,14 @@ public class InteractionController {
 
         @ExceptionHandler(IllegalStateException.class)
         public ResponseEntity<ErrorResponse> handleStateConflict(IllegalStateException ex) {
-            String rawCode = ex.getMessage();
-            String mappedCode = "CANNOT_CHEER_OWN".equals(rawCode) ? "SELF_CHEER_FORBIDDEN" : rawCode;
-            HttpStatus status = switch (mappedCode) {
-                case "SELF_CHEER_FORBIDDEN", "SELF_REPORT_FORBIDDEN" -> HttpStatus.FORBIDDEN;
-                case "ALREADY_CHEERED", "DUPLICATE_REPORT" -> HttpStatus.CONFLICT;
+            String code = ex.getMessage();
+            HttpStatus status = switch (code) {
+                case "CANNOT_CHEER_OWN", "SELF_REPORT_FORBIDDEN" -> HttpStatus.FORBIDDEN;
+                case "ALREADY_CHEERED", "ALREADY_REPORTED" -> HttpStatus.CONFLICT;
                 default -> HttpStatus.CONFLICT;
             };
             return ResponseEntity.status(status)
-                .body(new ErrorResponse(mappedCode, mappedCode));
+                .body(new ErrorResponse(code, code));
         }
     }
 }
