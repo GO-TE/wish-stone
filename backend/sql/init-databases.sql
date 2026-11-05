@@ -16,10 +16,12 @@ USE user_db;
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(36) PRIMARY KEY,
   nickname VARCHAR(12) NULL,
+  tag VARCHAR(10) NULL COMMENT '배틀태그 방식 식별 태그 (예: real, 4821) - D-015',
   is_guest BOOLEAN NOT NULL DEFAULT FALSE,
   last_checked_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  deleted_at DATETIME(6) NULL
+  deleted_at DATETIME(6) NULL,
+  UNIQUE KEY uk_nickname_tag (nickname, tag)
 );
 
 CREATE TABLE IF NOT EXISTS user_identities (
@@ -75,6 +77,17 @@ CREATE TABLE IF NOT EXISTS processed_events (
   event_id VARCHAR(36) PRIMARY KEY,
   event_type VARCHAR(50) NOT NULL,
   processed_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+);
+
+-- 일일 소원 생성 쿼터 (기본 5개 무료 + 광고/결제 보너스 쿼터 확장 구조 - D-018)
+CREATE TABLE IF NOT EXISTS daily_wish_quotas (
+  user_id VARCHAR(36) NOT NULL,
+  quota_date DATE NOT NULL,
+  base_quota INT NOT NULL DEFAULT 5,
+  bonus_quota INT NOT NULL DEFAULT 0 COMMENT '리워드 광고 시청 또는 인앱 결제로 충전된 횟수',
+  used_count INT NOT NULL DEFAULT 0,
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (user_id, quota_date)
 );
 
 -- -----------------------------------------------------------------------------
