@@ -8,11 +8,20 @@ import { type TowerStoneItem } from '../../domain/entities/Tower.ts';
 import { type WishId } from '../../domain/entities/Wish.ts';
 import { type SimulationFrame } from '../../domain/ports/PhysicsWorld.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
+import { StonePhysicsBodyFactory } from '../../infrastructure/physics/StonePhysicsBodyFactory.ts';
 import { type StackPlacementPhase } from '../controllers/StackStoneController.ts';
 import {
   type CameraPresetType,
   computePresetCameraView,
 } from './cameraPresetSpec.ts';
+import {
+  computeDragWorldPosition,
+  computeInitialSpawnPosition,
+  calculate3DDropPoseFromWorldPosition,
+  evaluateLiveBalance,
+  shouldTriggerDrop,
+  type DragWorldPositionResult,
+} from './stoneDragSpec.ts';
 import {
   buildStoneGeometrySpec,
   buildTowerSceneGraph,
@@ -23,6 +32,7 @@ import {
 
 export * from './stoneTowerSpec.ts';
 export * from './cameraPresetSpec.ts';
+export * from './stoneDragSpec.ts';
 
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
@@ -50,6 +60,12 @@ export interface StoneTowerCanvasProps {
     color: string;
     offset: { x: number; y?: number; z: number };
   } | null;
+  readonly activeStone?: TowerStoneItem | Stone | null;
+  readonly isDraggable?: boolean;
+  readonly onStoneDragStart?: () => void;
+  readonly onStoneDragMove?: (result: DragWorldPositionResult) => void;
+  readonly onStoneDrop?: (dropPose: Pose) => void;
+  readonly onStoneDragCancel?: () => void;
 }
 
 function normalizeTowerStoneItems(
@@ -208,11 +224,16 @@ function StoneMesh3D({
   const sx = geo.scale.x * 0.5;
   const sy = geo.scale.y * 0.5;
   const sz = geo.scale.z * 0.5;
+  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
+  const meshScale: [number, number, number] = isPolyhedron
+    ? [sx / sy, 1, sz / sy]
+    : [1, 1, 1];
 
   return (
     <mesh
       ref={meshRef}
       position={[node.position.x, node.position.y, node.position.z]}
+      scale={meshScale}
       castShadow
       receiveShadow
       onClick={(e) => {
@@ -221,15 +242,15 @@ function StoneMesh3D({
       }}
     >
       {geo.shape === 'round' ? (
-        <dodecahedronGeometry args={[sy * 1.1, 1]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : geo.shape === 'flat' ? (
         <boxGeometry args={[sx, sy, sz]} />
       ) : geo.shape === 'tall' ? (
         <boxGeometry args={[sx, sy, sz]} />
       ) : geo.shape === 'pebble' ? (
-        <dodecahedronGeometry args={[sy * 1.05, 1]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : (
-        <dodecahedronGeometry args={[sy * 1.2, 0]} />
+        <dodecahedronGeometry args={[sy * 0.5, 0]} />
       )}
       <meshStandardMaterial
         color={node.material.baseColor}
@@ -275,6 +296,10 @@ function DroppedStoneMesh3D({
   const sx = geo.scale.x * 0.5;
   const sy = geo.scale.y * 0.5;
   const sz = geo.scale.z * 0.5;
+  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
+  const meshScale: [number, number, number] = isPolyhedron
+    ? [sx / sy, 1, sz / sy]
+    : [1, 1, 1];
 
   const effectivePose = initialPoseOverride ?? stone.pose;
 
@@ -288,19 +313,20 @@ function DroppedStoneMesh3D({
         effectivePose.rotation.qz,
         effectivePose.rotation.qw,
       ]}
+      scale={meshScale}
       castShadow
       receiveShadow
     >
       {geo.shape === 'round' ? (
-        <dodecahedronGeometry args={[sy * 1.1, 1]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : geo.shape === 'flat' ? (
         <boxGeometry args={[sx, sy, sz]} />
       ) : geo.shape === 'tall' ? (
         <boxGeometry args={[sx, sy, sz]} />
       ) : geo.shape === 'pebble' ? (
-        <dodecahedronGeometry args={[sy * 1.05, 1]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : (
-        <dodecahedronGeometry args={[sy * 1.2, 0]} />
+        <dodecahedronGeometry args={[sy * 0.5, 0]} />
       )}
       <meshStandardMaterial
         color={stone.color}
@@ -329,6 +355,10 @@ function HoveringStonePreview3D({
   const sx = geo.scale.x * 0.5;
   const sy = geo.scale.y * 0.5;
   const sz = geo.scale.z * 0.5;
+  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
+  const meshScale: [number, number, number] = isPolyhedron
+    ? [sx / sy, 1, sz / sy]
+    : [1, 1, 1];
 
   const targetY = towerTopY;
   const hoverY = offset.y ?? targetY + 0.42;
@@ -344,17 +374,17 @@ function HoveringStonePreview3D({
 
   return (
     <group>
-      <mesh ref={meshRef} position={[offset.x, hoverY, offset.z]} castShadow>
+      <mesh ref={meshRef} position={[offset.x, hoverY, offset.z]} scale={meshScale} castShadow>
         {geo.shape === 'round' ? (
-          <dodecahedronGeometry args={[sy * 1.1, 1]} />
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
         ) : geo.shape === 'flat' ? (
           <boxGeometry args={[sx, sy, sz]} />
         ) : geo.shape === 'tall' ? (
           <boxGeometry args={[sx, sy, sz]} />
         ) : geo.shape === 'pebble' ? (
-          <dodecahedronGeometry args={[sy * 1.05, 1]} />
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
         ) : (
-          <dodecahedronGeometry args={[sy * 1.2, 0]} />
+          <dodecahedronGeometry args={[sy * 0.5, 0]} />
         )}
         <meshStandardMaterial
           color={color}
@@ -377,6 +407,219 @@ function HoveringStonePreview3D({
           transparent
           opacity={0.8}
           side={THREE.DoubleSide}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+export function InteractiveDraggableStone3D({
+  stone,
+  towerTopY,
+  isDraggable = true,
+  controlsRef,
+  onDragStart,
+  onDragMove,
+  onDrop,
+  onDragCancel,
+  phase,
+}: {
+  stone: Stone;
+  towerTopY: number;
+  isDraggable?: boolean;
+  controlsRef?: React.MutableRefObject<any>;
+  onDragStart?: () => void;
+  onDragMove?: (result: DragWorldPositionResult) => void;
+  onDrop?: (dropPose: Pose) => void;
+  onDragCancel?: () => void;
+  phase?: StackPlacementPhase;
+}) {
+  const meshRef = React.useRef<THREE.Mesh>(null);
+  const geo = buildStoneGeometrySpec(stone.shape);
+  const sx = geo.scale.x * 0.5;
+  const sy = geo.scale.y * 0.5;
+  const sz = geo.scale.z * 0.5;
+  const isPolyhedron =
+    geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
+  const meshScale: [number, number, number] = isPolyhedron
+    ? [sx / sy, 1, sz / sy]
+    : [1, 1, 1];
+
+  const initialPos = useMemo(() => computeInitialSpawnPosition(towerTopY), [towerTopY]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [currentPos, setCurrentPos] = useState<readonly [number, number, number]>(initialPos);
+  const [balanceRating, setBalanceRating] = useState<'stable' | 'caution' | 'critical'>('stable');
+  const [isOverDropZone, setIsOverDropZone] = useState(false);
+
+  const isDraggingRef = useRef(false);
+  const currentPosRef = useRef<readonly [number, number, number]>(initialPos);
+  const startPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (phase === 'IDLE') {
+      currentPosRef.current = initialPos;
+      setCurrentPos(initialPos);
+      setIsDragging(false);
+      isDraggingRef.current = false;
+      setBalanceRating('stable');
+      setIsOverDropZone(false);
+    }
+  }, [phase, initialPos, stone]);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    if (!isDraggingRef.current) {
+      const bob = Math.sin(clock.getElapsedTime() * 2.5) * 0.015;
+      meshRef.current.position.set(
+        initialPos[0],
+        initialPos[1] + bob,
+        initialPos[2]
+      );
+    } else {
+      meshRef.current.position.set(
+        currentPosRef.current[0],
+        currentPosRef.current[1],
+        currentPosRef.current[2]
+      );
+    }
+  });
+
+  const auraColor =
+    balanceRating === 'stable'
+      ? '#3182F6'
+      : balanceRating === 'caution'
+      ? '#FFB300'
+      : '#FF6B6B';
+
+  const handlePointerDown = (e: any) => {
+    if (!isDraggable) return;
+    e.stopPropagation();
+
+    isDraggingRef.current = true;
+    setIsDragging(true);
+
+    if (controlsRef?.current) {
+      controlsRef.current.enabled = false;
+    }
+
+    const clientX = e.clientX ?? (e.nativeEvent as any)?.clientX ?? 0;
+    const clientY = e.clientY ?? (e.nativeEvent as any)?.clientY ?? 0;
+    startPointerRef.current = { x: clientX, y: clientY };
+
+    onDragStart?.();
+
+    if (typeof window !== 'undefined') {
+      const handleWindowPointerMove = (ev: PointerEvent) => {
+        if (!isDraggingRef.current) return;
+        const deltaX = ev.clientX - startPointerRef.current.x;
+        const deltaY = ev.clientY - startPointerRef.current.y;
+        const result = computeDragWorldPosition(deltaX, deltaY, initialPos, towerTopY);
+
+        currentPosRef.current = result.position;
+        setCurrentPos(result.position);
+        setBalanceRating(result.balanceRating);
+        setIsOverDropZone(result.isOverDropZone);
+
+        onDragMove?.(result);
+      };
+
+      const handleWindowPointerUp = () => {
+        if (!isDraggingRef.current) return;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+
+        if (controlsRef?.current) {
+          controlsRef.current.enabled = true;
+        }
+
+        window.removeEventListener('pointermove', handleWindowPointerMove);
+        window.removeEventListener('pointerup', handleWindowPointerUp);
+        window.removeEventListener('pointercancel', handleWindowPointerUp);
+
+        const finalPos = currentPosRef.current;
+        const stoneHalfY = StonePhysicsBodyFactory.getShapeConfig(stone.shape).halfExtents.y;
+        const shouldDrop = shouldTriggerDrop(finalPos[1], towerTopY);
+
+        if (shouldDrop) {
+          const dropPose = calculate3DDropPoseFromWorldPosition(
+            finalPos,
+            towerTopY,
+            stoneHalfY
+          );
+          onDrop?.(dropPose);
+        } else {
+          currentPosRef.current = initialPos;
+          setCurrentPos(initialPos);
+          setBalanceRating('stable');
+          setIsOverDropZone(false);
+          onDragCancel?.();
+        }
+      };
+
+      window.addEventListener('pointermove', handleWindowPointerMove);
+      window.addEventListener('pointerup', handleWindowPointerUp);
+      window.addEventListener('pointercancel', handleWindowPointerUp);
+    }
+  };
+
+  return (
+    <group>
+      {/* Spawn Pedestal Ring on Floor at initial position */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[initialPos[0], 0.01, initialPos[2]]}
+      >
+        <ringGeometry args={[0.16, 0.26, 32]} />
+        <meshBasicMaterial
+          color="#3182F6"
+          transparent
+          opacity={isDragging ? 0.2 : 0.55}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Target Apex Guide Ring (active during drag above lower elevation) */}
+      {isDragging && currentPos[1] >= 0.35 && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[currentPos[0], Math.max(0.02, towerTopY + 0.02), currentPos[2]]}
+        >
+          <ringGeometry args={[0.08, 0.18, 32]} />
+          <meshBasicMaterial
+            color={auraColor}
+            transparent
+            opacity={isOverDropZone ? 0.85 : 0.45}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
+
+      {/* 3D Draggable Stone Mesh */}
+      <mesh
+        ref={meshRef}
+        position={[initialPos[0], initialPos[1], initialPos[2]]}
+        scale={meshScale}
+        castShadow
+        onPointerDown={handlePointerDown}
+      >
+        {geo.shape === 'round' ? (
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
+        ) : geo.shape === 'flat' ? (
+          <boxGeometry args={[sx, sy, sz]} />
+        ) : geo.shape === 'tall' ? (
+          <boxGeometry args={[sx, sy, sz]} />
+        ) : geo.shape === 'pebble' ? (
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
+        ) : (
+          <dodecahedronGeometry args={[sy * 0.5, 0]} />
+        )}
+        <meshStandardMaterial
+          color={stone.color}
+          roughness={geo.roughness}
+          metalness={geo.metalness}
+          emissive={auraColor}
+          emissiveIntensity={isDragging ? 0.65 : 0.35}
+          flatShading={geo.flatShading}
         />
       </mesh>
     </group>
@@ -555,6 +798,13 @@ export function StoneTowerCanvas({
   enablePan = false,
   enableZoom = true,
   selectedStoneId,
+  hoveringPreviewStone,
+  activeStone,
+  isDraggable = true,
+  onStoneDragStart,
+  onStoneDragMove,
+  onStoneDrop,
+  onStoneDragCancel,
 }: StoneTowerCanvasProps) {
   const normalizedStones = useMemo(() => normalizeTowerStoneItems(stones), [stones]);
   const nodes = buildTowerSceneGraph(normalizedStones);
@@ -564,6 +814,15 @@ export function StoneTowerCanvas({
   const [lushMossEnabled, setLushMossEnabled] = useState(true);
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const orbitControlsRef = useRef<any>(null);
+
+  const activeStoneInstance = useMemo(() => {
+    if (!activeStone) return null;
+    if (activeStone instanceof Stone) return activeStone;
+    if ('stone' in activeStone && (activeStone as any).stone instanceof Stone) {
+      return (activeStone as any).stone as Stone;
+    }
+    return null;
+  }, [activeStone]);
 
   const effectiveSelectedId = selectedStoneId !== undefined ? selectedStoneId : selectedNode?.id;
   const effectiveSelectedNode = useMemo(() => {
@@ -718,11 +977,11 @@ export function StoneTowerCanvas({
       )}
 
       {use3D ? (
-        <View style={styles.threeCanvasWrapper}>
+        <View style={[styles.threeCanvasWrapper, { touchAction: 'none', userSelect: 'none' } as any]}>
           <Canvas
             shadows
             camera={{ position: [0, 1.8, 3.8], fov: 45 }}
-            style={styles.threeCanvas}
+            style={{ width: '100%', height: '100%', touchAction: 'none', userSelect: 'none' }}
           >
             <ambientLight intensity={0.55} />
             <directionalLight
@@ -769,6 +1028,29 @@ export function StoneTowerCanvas({
                 onSelect={() => handleStonePress(node)}
               />
             ))}
+
+            {activeStoneInstance && !droppedStone && (phase === 'IDLE' || phase === 'PLACING' || !phase) && (
+              <InteractiveDraggableStone3D
+                stone={activeStoneInstance}
+                towerTopY={towerTopY ?? 0.8}
+                isDraggable={isDraggable}
+                controlsRef={orbitControlsRef}
+                onDragStart={onStoneDragStart}
+                onDragMove={onStoneDragMove}
+                onDrop={onStoneDrop}
+                onDragCancel={onStoneDragCancel}
+                phase={phase}
+              />
+            )}
+
+            {hoveringPreviewStone && (
+              <HoveringStonePreview3D
+                shape={hoveringPreviewStone.shape}
+                color={hoveringPreviewStone.color}
+                offset={hoveringPreviewStone.offset}
+                towerTopY={towerTopY ?? 0.8}
+              />
+            )}
 
             {droppedStone && (
               <DroppedStoneMesh3D
