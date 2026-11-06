@@ -142,7 +142,7 @@ export function shouldTriggerDrop(
 ): boolean {
   if (!Number.isFinite(currentY)) return false;
   const safeTop = Number.isFinite(topSurfaceY) ? Math.max(0, topSurfaceY) : 0;
-  const threshold = Math.max(0.35, safeTop * thresholdRatio);
+  const threshold = Math.max(0.25, safeTop * thresholdRatio);
   return currentY >= threshold;
 }
 
@@ -165,7 +165,9 @@ export function calculate3DDropPoseFromWorldPosition(
         ? stoneHalfHeight
         : 0.25;
     const safeClearance = 0.08;
-    const minSafeY = Number((topSurfaceY + halfH + safeClearance).toFixed(4));
+    const isOverTower = Math.abs(x) <= DROP_ZONE_MAX_LATERAL_X && Math.abs(z) <= DROP_ZONE_MAX_DEPTH_Z;
+    const effectiveSurfaceY = isOverTower ? topSurfaceY : 0;
+    const minSafeY = Number((effectiveSurfaceY + halfH + safeClearance).toFixed(4));
     if (y < minSafeY) {
       y = minSafeY;
     }

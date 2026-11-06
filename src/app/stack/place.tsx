@@ -398,29 +398,7 @@ export default function PlaceStone3DScreen() {
           </Pressable>
         </View>
 
-        {/* Drop Target Zone */}
-        <View
-          style={[
-            styles.dropZone,
-            isNearTarget && !isOffCenter && styles.dropZoneActive,
-            isNearTarget && isOffCenter && styles.dropZoneWarning,
-          ]}
-        >
-          <Text style={styles.dropZoneTarget}>🎯</Text>
-          <Text
-            style={[
-              styles.dropZoneText,
-              isNearTarget && !isOffCenter && styles.dropZoneTextActive,
-              isNearTarget && isOffCenter && styles.dropZoneTextWarning,
-            ]}
-          >
-            {isNearTarget
-              ? isOffCenter
-                ? '⚠️ 중심에서 벗어남 (전복 위험!)'
-                : '✨ 안정적인 균형 위치 (놓으면 투하)'
-              : '여기에 돌을 놓아주세요'}
-          </Text>
-        </View>
+
 
         {/* Stone Tower Canvas with 3D Direct Drag Interaction */}
         <StoneTowerCanvas
@@ -642,41 +620,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  dropZone: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 18,
-    borderRadius: TossTheme.radius.button,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: TossTheme.colors.primarySoft,
-    backgroundColor: 'rgba(49, 130, 246, 0.05)',
-  },
-  dropZoneActive: {
-    borderColor: '#3182F6',
-    backgroundColor: 'rgba(49, 130, 246, 0.12)',
-  },
-  dropZoneWarning: {
-    borderColor: '#FF6B6B',
-    backgroundColor: 'rgba(255, 107, 107, 0.12)',
-  },
-  dropZoneTarget: {
-    fontSize: 20,
-    marginBottom: 2,
-  },
-  dropZoneText: {
-    ...TossTheme.typography.micro,
-    color: TossTheme.colors.primary,
-    fontWeight: '600',
-  },
-  dropZoneTextActive: {
-    color: '#3182F6',
-    fontWeight: '700',
-  },
-  dropZoneTextWarning: {
-    color: '#FF6B6B',
-    fontWeight: '700',
-  },
+  
+  
+  
+  
+  
+  
+  
   
   placementControlPanel: {
     width: '100%',

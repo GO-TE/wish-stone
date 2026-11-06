@@ -1,0 +1,196 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Stone } from '../domain/entities/Stone.ts';
+import { Tower } from '../domain/entities/Tower.ts';
+import { Pose } from '../domain/value-objects/Pose.ts';
+import { TowerKey } from '../domain/value-objects/TowerKey.ts';
+import { SimpleTowerPhysicsWorld } from '../infrastructure/physics/SimpleTowerPhysicsWorld.ts';
+import { StonePhysicsBodyFactory } from '../infrastructure/physics/StonePhysicsBodyFactory.ts';
+import {
+  calculate3DDropPoseFromWorldPosition,
+  DROP_ZONE_MAX_LATERAL_X,
+  DROP_ZONE_MAX_DEPTH_Z,
+} from '../presentation/components/stoneDragSpec.ts';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..');
+
+// =============================================================================
+// Feature 1: Removal of 2D "여기에 돌을 놓아주세요" UI & 3D Drop Prediction Indicator
+// =============================================================================
+test('Feature 1.1: 2D dropZone UI is completely removed from src/app/stack/place.tsx', () => {
+  const placeSource = fs.readFileSync(
+    path.resolve(projectRoot, 'app/stack/place.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    !placeSource.includes('여기에 돌을 놓아주세요'),
+    '2D guide text "여기에 돌을 놓아주세요" must NOT exist in place.tsx'
+  );
+  assert.ok(
+    !placeSource.includes('styles.dropZone'),
+    'styles.dropZone must NOT be referenced in place.tsx'
+  );
+});
+
+test('Feature 1.2: StoneTowerCanvas.tsx contains 3D Real-Time Drop Prediction Projection', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve(projectRoot, 'presentation/components/StoneTowerCanvas.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    canvasSource.includes('Projected Landing Reticle Ring & Contact Shadow'),
+    'StoneTowerCanvas must render projected landing reticle ring & contact shadow'
+  );
+  assert.ok(
+    canvasSource.includes('Vertical Laser Drop Guide Beam'),
+    'StoneTowerCanvas must render vertical laser drop guide beam connecting stone to landing point'
+  );
+  assert.ok(
+    canvasSource.includes('Cairn Apex Sweet Spot Marker'),
+    'StoneTowerCanvas must render stationary target center marker on cairn apex'
+  );
+});
+
+test('Feature 1.3: calculate3DDropPoseFromWorldPosition respects ground vs tower footprint', () => {
+  const topSurfaceY = 1.2;
+  const stoneHalfY = 0.205;
+
+  // Case A: Dropped within tower footprint
+  const overTowerPose = calculate3DDropPoseFromWorldPosition(
+    [0.1, 0.5, 0.05],
+    topSurfaceY,
+    stoneHalfY
+  );
+  assert.ok(
+    overTowerPose.position.y >= topSurfaceY + stoneHalfY,
+    'Drop over tower footprint must have elevation above topSurfaceY'
+  );
+
+  // Case B: Dropped outside tower footprint (cantilever / side drop)
+  const outsidePose = calculate3DDropPoseFromWorldPosition(
+    [0.85, 0.45, 0.6],
+    topSurfaceY,
+    stoneHalfY
+  );
+  assert.ok(
+    outsidePose.position.y <= topSurfaceY,
+    'Drop outside tower footprint must NOT be forced up to tower height'
+  );
+  assert.ok(
+    outsidePose.position.y >= stoneHalfY,
+    'Drop outside tower footprint must be at or above ground level'
+  );
+});
+
+// =============================================================================
+// Feature 2: Physics Engine Anti-Explosion & Gravity Realism
+// =============================================================================
+test('Feature 2.1: Contact material stiffness is 1e6 and restitution is inelastic (0.02)', () => {
+  const factorySource = fs.readFileSync(
+    path.resolve(projectRoot, 'infrastructure/physics/StonePhysicsBodyFactory.ts'),
+    'utf8'
+  );
+
+  assert.ok(
+    factorySource.includes('contactEquationStiffness: 1e6'),
+    'Contact material stiffness must be 1e6 to prevent explosive normal impulses'
+  );
+  assert.ok(
+    factorySource.includes('restitution: 0.02'),
+    'Contact restitution must be 0.02 for realistic inelastic stone contact'
+  );
+});
+
+test('Feature 2.2: Free fall drop adheres to gravity and lands on ground without hovering', async () => {
+  const world = new SimpleTowerPhysicsWorld(0.45, 0.25);
+  const droppedStone = new Stone({
+    shape: 'round',
+    color: '#444444',
+    pose: Pose.origin(),
+  });
+
+  // Drop stone from 1.0m height with no tower (empty ground)
+  const initialPose = new Pose({ x: 0, y: 1.0, z: 0 });
+  const result = await world.drop(droppedStone, initialPose);
+
+  assert.equal(result.settled, true, 'Drop onto ground settles cleanly');
+  assert.ok(
+    result.pose.position.y <= 0.35,
+    `Settled stone must rest near ground, got y=${result.pose.position.y}`
+  );
+  assert.ok(
+    result.pose.position.y >= 0.15,
+    `Settled stone must not penetrate underground, got y=${result.pose.position.y}`
+  );
+
+  world.dispose();
+});
+
+// =============================================================================
+// Feature 3: Dark Mode Visibility, Studio Rim Lighting & Ground Pedestal
+// =============================================================================
+test('Feature 3.1: StoneTowerCanvas includes circular ground pedestal and 3-point studio rim light', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve(projectRoot, 'presentation/components/StoneTowerCanvas.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    canvasSource.includes('Silhouette Rim Back-Light for Dark Mode Contrast'),
+    'Canvas must include silhouette rim back-light for dark mode stone edge delineation'
+  );
+  assert.ok(
+    canvasSource.includes('Circular Ground Pedestal Platform'),
+    'Canvas must include circular ground pedestal platform to give dark stones high-contrast base'
+  );
+});
+
+// =============================================================================
+// Feature 4: Overlapping Stones Cluster Popover & 3D Hover Outline Glow
+// =============================================================================
+test('Feature 4.1: src/app/tower/index.tsx includes cluster detection and hover outline glow popover', () => {
+  const towerSource = fs.readFileSync(
+    path.resolve(projectRoot, 'app/tower/index.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    towerSource.includes('const [overlappingCluster, setOverlappingCluster] = useState'),
+    'tower/index.tsx must manage overlappingCluster state'
+  );
+  assert.ok(
+    towerSource.includes('const [hoveredStoneId, setHoveredStoneId] = useState'),
+    'tower/index.tsx must manage hoveredStoneId state'
+  );
+  assert.ok(
+    towerSource.includes('clusterPopover'),
+    'tower/index.tsx must render clusterPopover for overlapping stones'
+  );
+  assert.ok(
+    towerSource.includes('hoveredStoneId={hoveredStoneId}'),
+    'tower/index.tsx must pass hoveredStoneId to StoneTowerCanvas'
+  );
+});
+
+test('Feature 4.2: StoneTowerCanvas.tsx renders glowing 3D wireframe outline for hovered stone', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve(projectRoot, 'presentation/components/StoneTowerCanvas.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    canvasSource.includes('isHovered && ('),
+    'StoneMesh3D must check isHovered'
+  );
+  assert.ok(
+    canvasSource.includes('color="#3182F6"') && canvasSource.includes('wireframe'),
+    'StoneMesh3D must render glowing Toss Blue wireframe halo on hover'
+  );
+});

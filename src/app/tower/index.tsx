@@ -83,6 +83,8 @@ export default function TowerExplorationScreen() {
 
   // 돌 선택 및 SCR-10 바텀시트 상태
   const [selectedStone, setSelectedStone] = useState<TowerStoneItem | null>(null);
+  const [hoveredStoneId, setHoveredStoneId] = useState<string | null>(null);
+  const [overlappingCluster, setOverlappingCluster] = useState<TowerStoneItem[] | null>(null);
   const [cheeredStoneIds, setCheeredStoneIds] = useState<Set<WishId>>(
     () => new Set()
   );
@@ -157,10 +159,30 @@ export default function TowerExplorationScreen() {
     setSelectedStone(null);
   };
 
-  // 돌 선택 핸들러
+  // 돌 선택 핸들러 (근접/겹침 클러스터 감지 및 호버 아웃라인 연동)
   const handleSelectStone = (stoneId: WishId) => {
-    const target = tower?.stones.find((s) => s.id === stoneId) ?? null;
-    setSelectedStone(target);
+    const clicked = tower?.stones.find((s) => s.id === stoneId);
+    if (!clicked) {
+      setSelectedStone(null);
+      setOverlappingCluster(null);
+      return;
+    }
+
+    // 3D 공간 상 반경 0.42m 이내의 겹쳐진 돌들을 감지
+    const cluster = (tower?.stones ?? []).filter((s) => {
+      const dx = s.stone.pose.position.x - clicked.stone.pose.position.x;
+      const dy = s.stone.pose.position.y - clicked.stone.pose.position.y;
+      const dz = s.stone.pose.position.z - clicked.stone.pose.position.z;
+      return Math.hypot(dx, dy, dz) <= 0.42;
+    });
+
+    if (cluster.length >= 2) {
+      setOverlappingCluster(cluster);
+      setSelectedStone(null);
+    } else {
+      setOverlappingCluster(null);
+      setSelectedStone(clicked);
+    }
   };
 
   // 응원하기 핸들러
@@ -317,6 +339,8 @@ export default function TowerExplorationScreen() {
             onCameraPresetChange={setCameraPreset}
             towerTopY={tower?.topY()}
             selectedStoneId={selectedStone?.id ?? null}
+            hoveredStoneId={hoveredStoneId}
+            onHoverStone={setHoveredStoneId}
             onSelectStone={(stoneId) => handleSelectStone(stoneId)}
             stones={tower?.stones ?? []}
           />
@@ -367,6 +391,82 @@ export default function TowerExplorationScreen() {
           })}
         </View>
       </View>
+
+      {/* 4.5 겹친 소원 돌 목록 팝업 (Cluster Selection with Hover Outline Glow) */}
+      {overlappingCluster && overlappingCluster.length >= 2 && (
+        <View style={styles.clusterPopover}>
+          <View style={styles.clusterHeader}>
+            <View style={styles.clusterTitleRow}>
+              <Text style={styles.clusterTitle}>
+                ⛰️ 겹친 소원 돌 ({overlappingCluster.length}개)
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setOverlappingCluster(null);
+                  setHoveredStoneId(null);
+                }}
+                style={styles.clusterCloseButton}
+              >
+                <Text style={styles.clusterCloseText}>✕</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.clusterSubtitle}>
+              돌에 마우스를 올리면 3D 돌탑에서 외곽선이 빛납니다
+            </Text>
+          </View>
+          <ScrollView
+            style={styles.clusterList}
+            contentContainerStyle={styles.clusterListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {overlappingCluster.map((item: TowerStoneItem) => {
+              const isHovered = hoveredStoneId === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  style={[
+                    styles.clusterItemCard,
+                    isHovered && styles.clusterItemCardHovered,
+                  ]}
+                  // @ts-ignore Web pointer hover
+                  onMouseEnter={() => setHoveredStoneId(item.id)}
+                  // @ts-ignore
+                  onMouseLeave={() => setHoveredStoneId(null)}
+                  onPress={() => {
+                    setHoveredStoneId(null);
+                    setOverlappingCluster(null);
+                    setSelectedStone(item);
+                  }}
+                >
+                  <View style={styles.clusterItemLeft}>
+                    <View
+                      style={[
+                        styles.clusterStoneDot,
+                        { backgroundColor: item.stone.color },
+                        isHovered && styles.clusterStoneDotGlow,
+                      ]}
+                    />
+                    <View>
+                      <Text style={styles.clusterItemName}>
+                        {item.nickname ?? '익명의 소원'}
+                      </Text>
+                      <Text style={styles.clusterItemShape}>
+                        {item.stone.shape} 형상 · 응원 {item.cheerCount ?? 0}회
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.clusterItemRight}>
+                    {isHovered && (
+                      <Text style={styles.clusterGlowBadge}>✨ 빛남</Text>
+                    )}
+                    <Text style={styles.clusterItemArrow}>선택 ▸</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
 
       {/* 5. SCR-10 소원 상세 바텀시트 */}
       <WishDetailBottomSheet
@@ -541,6 +641,112 @@ const styles = StyleSheet.create({
   },
   presetChipTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  clusterPopover: {
+    position: 'absolute',
+    bottom: 80,
+    left: 16,
+    right: 16,
+    maxHeight: 280,
+    backgroundColor: 'rgba(24, 27, 34, 0.96)',
+    borderRadius: TossTheme.radius.card,
+    borderWidth: 1.5,
+    borderColor: 'rgba(49, 130, 246, 0.45)',
+    padding: 16,
+    zIndex: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  clusterHeader: {
+    marginBottom: 10,
+  },
+  clusterTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  clusterTitle: {
+    ...TossTheme.typography.body,
+    fontWeight: '700',
+    color: TossTheme.colors.textPrimary,
+  },
+  clusterSubtitle: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textMuted,
+  },
+  clusterCloseButton: {
+    padding: 4,
+  },
+  clusterCloseText: {
+    color: TossTheme.colors.textMuted,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  clusterList: {
+    maxHeight: 180,
+  },
+  clusterListContent: {
+    gap: 8,
+  },
+  clusterItemCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: TossTheme.radius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  clusterItemCardHovered: {
+    backgroundColor: 'rgba(49, 130, 246, 0.15)',
+    borderColor: '#3182F6',
+  },
+  clusterItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  clusterStoneDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  clusterStoneDotGlow: {
+    borderColor: '#3182F6',
+    shadowColor: '#3182F6',
+    shadowRadius: 6,
+    shadowOpacity: 1,
+  },
+  clusterItemName: {
+    ...TossTheme.typography.caption,
+    fontWeight: '700',
+    color: TossTheme.colors.textPrimary,
+  },
+  clusterItemShape: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textMuted,
+  },
+  clusterItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clusterGlowBadge: {
+    ...TossTheme.typography.micro,
+    color: '#3182F6',
+    fontWeight: '700',
+  },
+  clusterItemArrow: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.primary,
     fontWeight: '700',
   },
 });
