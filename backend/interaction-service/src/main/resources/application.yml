@@ -17,7 +17,7 @@ spring:
     listener:
       auto-startup: ${KAFKA_LISTENER_AUTO_STARTUP:false}
 
-stonewish:
+wishstone:
   cheer:
     threshold:
       level1: 1

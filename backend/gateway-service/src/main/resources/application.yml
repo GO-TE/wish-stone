@@ -45,6 +45,6 @@ spring:
           predicates:
             - Path=/api/v1/groups/**
 
-stonewish:
+wishstone:
   jwt:
-    secret: ${STONEWISH_JWT_SECRET:stonewish-default-hmac-sha256-secret-key-2026-secure}
+    secret: ${STONEWISH_JWT_SECRET:wishstone-default-hmac-sha256-secret-key-2026-secure}

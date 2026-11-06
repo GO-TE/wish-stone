@@ -179,7 +179,7 @@ export default function PlaceStone3DScreen() {
           return;
         } catch {}
       }
-      setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+      setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일시적인 네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
       setIsConfirmingFallen(false);
     }
   };
@@ -303,7 +303,7 @@ export default function PlaceStone3DScreen() {
       if (err?.message?.includes('DAILY_QUOTA_EXCEEDED') || err?.code === 'DAILY_QUOTA_EXCEEDED') {
         setStatusMessage('오늘의 소원 돌 쌓기 쿼터(5개)를 모두 소진했습니다.');
       } else {
-        setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+        setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일시적인 네트워크 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
       }
     }
   };
@@ -428,17 +428,15 @@ export default function PlaceStone3DScreen() {
             setPhase('PLACING');
             controller.startPlacing();
             safeHaptic('grab');
-            setStatusMessage('3D 소원 돌을 잡았습니다. 돌탑 꼭대기로 끌어올리세요!');
+            setStatusMessage('마음이 닿는 곳으로 돌을 자유롭게 옮겨보세요');
           }}
           onStoneDragMove={(result: DragWorldPositionResult) => {
             setIsNearTarget(result.isOverDropZone);
             setIsOffCenter(result.balanceRating !== 'stable');
-            if (result.balanceRating === 'critical') {
-              setStatusMessage('⚠️ 중심에서 벗어남 (전복 위험! 가운데로 맞춰주세요)');
-            } else if (result.isOverDropZone) {
-              setStatusMessage('✨ 안정적인 균형 위치 (손을 놓으면 탑 위에 안착합니다)');
+            if (result.isOverDropZone) {
+              setStatusMessage('✨ 손을 놓으면 이 자리에 돌이 안착합니다');
             } else {
-              setStatusMessage('돌탑 꼭대기를 향해 위로 끌어올려 보세요');
+              setStatusMessage('원하는 위치로 돌을 자유롭게 끌어올려 보세요');
             }
           }}
           onStoneDrop={(dropPose) => {
@@ -448,7 +446,7 @@ export default function PlaceStone3DScreen() {
             setPhase('IDLE');
             setIsNearTarget(false);
             setIsOffCenter(false);
-            setStatusMessage('돌탑 꼭대기까지 더 높이 끌어올려 놓아보세요!');
+            setStatusMessage('원하는 높이와 위치에서 손을 놓아 돌을 올려보세요');
           }}
           collapsedShake={phase === 'COLLAPSING'}
           trajectory={currentTrajectory ?? state.lastSimulationTrajectory}

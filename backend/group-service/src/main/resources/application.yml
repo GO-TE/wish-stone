@@ -13,6 +13,6 @@ spring:
       ddl-auto: update
     open-in-view: false
 
-stonewish:
+wishstone:
   group:
     default-max-members: 50
