@@ -85,6 +85,21 @@ export default function TowerExplorationScreen() {
   const [selectedStone, setSelectedStone] = useState<TowerStoneItem | null>(null);
   const [hoveredStoneId, setHoveredStoneId] = useState<string | null>(null);
   const [overlappingCluster, setOverlappingCluster] = useState<TowerStoneItem[] | null>(null);
+  const hoverDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSetHoveredStone = useCallback((id: string | null) => {
+    if (hoverDebounceTimerRef.current) {
+      clearTimeout(hoverDebounceTimerRef.current);
+      hoverDebounceTimerRef.current = null;
+    }
+    if (id !== null) {
+      setHoveredStoneId(id);
+    } else {
+      hoverDebounceTimerRef.current = setTimeout(() => {
+        setHoveredStoneId(null);
+      }, 50);
+    }
+  }, []);
   const [cheeredStoneIds, setCheeredStoneIds] = useState<Set<WishId>>(
     () => new Set()
   );
@@ -429,16 +444,16 @@ export default function TowerExplorationScreen() {
                     isHovered && styles.clusterItemCardHovered,
                   ]}
                   // @ts-ignore Web pointer hover
-                  onMouseEnter={() => setHoveredStoneId(item.id)}
+                  onMouseEnter={() => handleSetHoveredStone(item.id)}
                   // @ts-ignore
-                  onMouseLeave={() => setHoveredStoneId(null)}
+                  onMouseLeave={() => handleSetHoveredStone(null)}
                   onPress={() => {
                     setHoveredStoneId(null);
                     setOverlappingCluster(null);
                     setSelectedStone(item);
                   }}
                 >
-                  <View style={styles.clusterItemLeft}>
+                  <View style={styles.clusterItemLeft} pointerEvents="none">
                     <View
                       style={[
                         styles.clusterStoneDot,
@@ -455,7 +470,7 @@ export default function TowerExplorationScreen() {
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.clusterItemRight}>
+                  <View style={styles.clusterItemRight} pointerEvents="none">
                     {isHovered && (
                       <Text style={styles.clusterGlowBadge}>✨ 빛남</Text>
                     )}
