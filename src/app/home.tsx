@@ -155,21 +155,40 @@ export default function HomeScreen() {
             <Text style={styles.towerTitle}>
               {state.currentTowerKey.toString()} 돌탑 ({state.tower?.stones.length ?? 0}개)
             </Text>
-            <Pressable
-              style={styles.arViewButton}
-              onPress={() => router.push('/stack/ar')}
-            >
-              <Text style={styles.arViewButtonText}>👓 AR 모드</Text>
-            </Pressable>
+            <View style={styles.towerHeaderActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.exploreViewButton,
+                  pressed && { opacity: 0.75 },
+                ]}
+                onPress={() => router.push('/tower')}
+                accessibilityLabel="360° 둘러보기"
+              >
+                <Text style={styles.exploreViewButtonText}>🔍 360° 둘러보기</Text>
+              </Pressable>
+              <Pressable
+                style={styles.arViewButton}
+                onPress={() => router.push('/stack/ar')}
+              >
+                <Text style={styles.arViewButtonText}>👓 AR 모드</Text>
+              </Pressable>
+            </View>
           </View>
 
-          <View style={styles.canvasContainer}>
-            <StoneTowerCanvas stones={state.tower?.stones ?? []} />
+          <Pressable
+            style={styles.canvasContainer}
+            onPress={() => router.push('/tower')}
+            accessibilityLabel="3D 돌탑 둘러보기로 이동"
+          >
+            <StoneTowerCanvas
+              stones={state.tower?.stones ?? []}
+              onSelectStone={() => router.push('/tower')}
+            />
             <CheerSparkEffect
               event={state.lastEffect}
               towerTopY={state.tower?.topY() ?? 1.0}
             />
-          </View>
+          </Pressable>
         </View>
 
         {/* ④ 토스형 소원 카드 피드 */}
@@ -382,6 +401,24 @@ const styles = StyleSheet.create({
     ...TossTheme.typography.caption,
     color: TossTheme.colors.textSecondary,
     fontWeight: '600',
+  },
+  towerHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exploreViewButton: {
+    backgroundColor: TossTheme.colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: TossTheme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(49, 130, 246, 0.3)',
+  },
+  exploreViewButtonText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.primary,
+    fontWeight: '700',
   },
   arViewButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',

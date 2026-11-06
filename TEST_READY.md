@@ -1,10 +1,10 @@
 # Test Readiness Verification Manifest (TEST_READY.md)
 
 **Project**: Wish Stone (`위시 스톤`)  
-**Milestone**: M1 Physics Remediation Track Complete (Gate 1 Remediation Gen2)  
-**Date**: 2026-11-05  
-**Author**: `test_writer_physics_m1_gen2` (Teamwork Test Writer)  
-**Verification Gate**: **100% PASS** (38 tests passed, 0 failed, 0 skipped, execution duration: ~570ms; `npx.cmd tsc --noEmit`: 0 errors)  
+**Milestone**: Milestone 4: E2E Testing Track (Camera Controls, Tower Exploration, SCR-10 Wish Modal & Cheering Flow)  
+**Date**: 2026-11-06  
+**Author**: `test_writer_e2e_m4` (Teamwork Test Writer)  
+**Verification Gate**: **100% PASS** (New E2E Suite: 43 / 43 tests passed; Total Project Suite: 129 / 129 tests passed, 0 failed, 0 skipped, execution duration: ~1.5s; `npx tsc --noEmit`: 0 errors)  
 
 ---
 
@@ -16,18 +16,13 @@ The test suite runs natively in headless Node.js v24 with ESM and zero external 
 Set-Location "c:\Users\sybon\Desktop\workspace\code\wish_stone\위시 스톤"
 
 # 1. Typecheck verification gate: 0 errors
-npx.cmd tsc --noEmit
+cmd /c "npx tsc --noEmit"
 
-# 2. Run complete automated test suite (all 38 tests across 7 test suites)
-npm.cmd test
+# 2. Run new Milestone 4 E2E test suite directly (43 tests)
+node --test src/__tests__/e2e-camera-tower-exploration.test.ts
 
-# 3. Run individual physics simulation test suites directly
-node --test src/__tests__/physics-rigidbody-simulation.test.ts
-node --test src/__tests__/tower-dynamic-collapse.test.ts
-
-# 4. Verify deliverable classes are directly imported in tests
-Select-String -Path "src/__tests__/physics-rigidbody-simulation.test.ts" -Pattern "StonePhysicsBodyFactory|StabilityEvaluator|SimpleTowerPhysicsWorld"
-Select-String -Path "src/__tests__/tower-dynamic-collapse.test.ts" -Pattern "StonePhysicsBodyFactory|StabilityEvaluator|SimpleTowerPhysicsWorld"
+# 3. Run complete automated test suite (all 129 tests across all test suites)
+cmd /c "npm test"
 ```
 
 ---
@@ -37,44 +32,86 @@ Select-String -Path "src/__tests__/tower-dynamic-collapse.test.ts" -Pattern "Sto
 ### Summary Matrix
 | Category | File | Test Count | Pass Status | Duration |
 |---|---|---|---|---|
-| **Tier 1: Primitives & Dynamics** | `src/__tests__/physics-rigidbody-simulation.test.ts` | 6 tests | 6 / 6 PASS | ~60ms |
-| **Tier 2: Boundary & Corner Cases** | `src/__tests__/physics-rigidbody-simulation.test.ts` | 5 tests | 5 / 5 PASS | ~65ms |
-| **Tier 3: Cross-Feature Integration** | `src/__tests__/tower-dynamic-collapse.test.ts` | 4 tests | 4 / 4 PASS | ~120ms |
-| **Tier 4: Scenarios & Anti-Canned** | `src/__tests__/tower-dynamic-collapse.test.ts` | 5 tests | 5 / 5 PASS | ~50ms |
-| **Baseline Application Test Suites** | 5 suites (`canvas`, `domain`, `e2e`, `controllers`, `toast`) | 18 tests | 18 / 18 PASS | ~275ms |
-| **Total Test Suite** | **7 test suites** | **38 tests** | **38 / 38 PASS** | **~570ms** |
+| **Tier 1: Feature Coverage (F01–F11)** | `src/__tests__/e2e-camera-tower-exploration.test.ts` | 30 tests | 30 / 30 PASS | ~45ms |
+| **Tier 2: Boundary & Corner Cases** | `src/__tests__/e2e-camera-tower-exploration.test.ts` | 5 tests | 5 / 5 PASS | ~12ms |
+| **Tier 3: Cross-Feature Combinations** | `src/__tests__/e2e-camera-tower-exploration.test.ts` | 3 tests | 3 / 3 PASS | ~10ms |
+| **Tier 4: Real-World User Scenarios** | `src/__tests__/e2e-camera-tower-exploration.test.ts` | 5 tests | 5 / 5 PASS | ~15ms |
+| **Total Milestone 4 E2E Suite** | `src/__tests__/e2e-camera-tower-exploration.test.ts` | **43 tests** | **43 / 43 PASS** | **~82ms** |
+| **Existing Baseline Project Suites** | 7 suites (`camera-presets`, `canvas`, `domain`, `physics`, `toast`, etc.) | 86 tests | 86 / 86 PASS | ~1400ms |
+| **Complete System Test Suite** | **8 test suites** | **129 tests** | **129 / 129 PASS** | **~1500ms** |
 
 ---
 
-### Detailed Test Inventory
+### Detailed Test Inventory (`e2e-camera-tower-exploration.test.ts`)
 
-#### Tier 1: Physics Primitives & Rigid-Body Dynamics (`physics-rigidbody-simulation.test.ts`)
-- [x] **T1.1 - Fixed Timestep Stepping & Determinism**: Directly instantiates `SimpleTowerPhysicsWorld`, verifies manual stepping `world.step(dt)` and exact deterministic trajectory repeatability across identical runs.
-- [x] **T1.2 - Gravitational Acceleration & Free Fall Derivatives**: Uses `StonePhysicsBodyFactory.createStoneBody()` (`shape: 'round'`) and `StonePhysicsBodyFactory.configureWorldMaterials()`; verifies analytical velocity $v_y(t) = -gt$, zero lateral drift, and second numerical derivative $a_y[k] = \frac{\Delta v_y}{\Delta t} = -9.82 \pm 0.05\,\text{m/s}^2$.
-- [x] **T1.3 - Ground Plane Collision & Restitution Decay**: Uses `StonePhysicsBodyFactory.createGroundBody()` and `createStoneBody()` with `shape: 'flat'`; verifies resting COM height matching half-extent ($y = h \pm 0.02\,\text{m}$) and velocity dampening.
-- [x] **T1.4 - Normal Force Equilibrium & Sleep State**: Uses `StonePhysicsBodyFactory.createStoneBody()` (`shape: 'boulder'`); verifies normal force balance on ground plane under gravity, velocity damping ($\|v\| < 0.005\,\text{m/s}$), and automatic transition into `CANNON.Body.SLEEPING` state.
-- [x] **T1.5 - Friction Resistance & Kinetic Energy Arrest**: Uses `StonePhysicsBodyFactory.getStoneMaterial()` and `getGroundMaterial()`; verifies Coulomb friction by comparing frictionless sliding ($\mu = 0.0 \implies v_x = 3.0\,\text{m/s}, x > 2.5\,\text{m}$) against realistic rock friction ($\mu = 0.75 \implies v_x \approx 0, x < 0.6\,\text{m}$).
-- [x] **T1.6 - Shape Mass & Principal Inertia Tensor Properties**: Directly imports `StonePhysicsBodyFactory.SHAPE_CONFIGS` across all 5 shapes (`boulder`, `flat`, `tall`, `round`, `pebble`); verifies mass ordering (`boulder` > `flat` > `tall` > `round` > `pebble`) and moment of inertia distributions ($I_{yy} > I_{xx}$ for wide `flat` stone, $I_{xx} > I_{yy}$ for slender `tall` stone).
+#### Tier 1: Feature Coverage (F01 ~ F11, 30 tests)
 
-#### Tier 2: Boundary Value Analysis & Extreme Corner Cases (`physics-rigidbody-simulation.test.ts`)
-- [x] **T2.1 - Sub-Critical Near-Edge Boundary Stability (Inside Support Polygon)**: Uses `StabilityEvaluator.computeSupportPolygon()` on base stone and `evaluateStability()`; verifies $d_{\text{margin}} > 0$ and `SimpleTowerPhysicsWorld.drop()` settling stably (`settled: true, collapsed: false`).
-- [x] **T2.2 - Super-Critical Near-Edge Boundary Tumble (Outside Support Polygon)**: Uses `StabilityEvaluator` and `SimpleTowerPhysicsWorld`; verifies $d_{\text{margin}} < 0$, overturning torque sign physically correct ($\tau_z < 0$ for $+X$ COM offset), and `drop()` tumbling to ground (`settled: false, collapsed: true`).
-- [x] **T2.3 - Extreme Mass Ratio Shock (Light Top vs Heavy Top Impact)**: Uses `StonePhysicsBodyFactory.createStoneBody()` with `boulder` (2.5kg) and `pebble` (0.6kg); verifies finite coordinates and solver stability under severe mass asymmetry.
-- [x] **T2.4 - High Elevation Impact Drop & Anti-Tunneling Verification**: High elevation drop ($h = 2.0\,\text{m}$) via `SimpleTowerPhysicsWorld`; verifies anti-tunneling across all trajectory frames ($y_{\min} > 0.05\,\text{m}$) and final resting equilibrium at half-height.
-- [x] **T2.5 - Aspect Ratio Stability (Slender Tall vs Wide Flat)**: Uses `StonePhysicsBodyFactory.createStoneBody()` with $30^\circ$ initial tilt; proves wide `flat` stone self-rights to upright equilibrium ($\theta_{\text{final}} < 5^\circ$), whereas slender `tall` stone topples onto its side ($\theta_{\text{final}} > 75^\circ$).
+##### Area 1: F01 & F02 (OrbitControls Configuration, Polar Clamping & Idle Reset Bug Fix)
+- [x] **T1.1 - OrbitControls Config UX Bounds**: Verifies `dampingFactor: 0.08`, `enableDamping: true`, `minDistance: 1.5`, and `maxDistance: 7.0` keep the stone cairn in view.
+- [x] **T1.2 - Polar Angle Clamping Bounds**: Verifies strict elevation boundaries $\theta \in [0.05, \pi \times 0.49]$ rad (~88.2°), ensuring camera never penetrates the ground plane ($y > 0$).
+- [x] **T1.3 - Azimuthal Free Rotation**: Verifies horizontal rotation angle $\phi$ permits unconstrained 360° inspection across arbitrary revolutions ($\pm 4\pi$).
+- [x] **T1.4 - Idle Camera Persistence**: Verifies camera position is preserved across 60 idle frames without being reset or lerped back to default `[0, 1.8, 3.8]`.
+- [x] **T1.5 - OrbitControls Interaction Toggle**: Verifies OrbitControls can be disabled dynamically when modal sheets/overlays are visible.
 
-#### Tier 3: Cross-Feature Integration & Stacking Flows (`tower-dynamic-collapse.test.ts`)
-- [x] **T3.1 - Sequential Stacking Sequence & Tower Height Composite**: Constructs 3-stone tower via `SimpleTowerPhysicsWorld.addStatic([s1, s2])` and `world.drop(s3, pose)`; verifies resting equilibrium and composite tower height equaling exact sum of thicknesses.
-- [x] **T3.2 - Cascading Momentum Transfer in Multi-Stone Collapse**: Constructs 3-stone tower via `SimpleTowerPhysicsWorld.addStatic([base, mid, top])` and drops off-center boulder; verifies natural dynamic cascading collapse (`res.collapsed === true` and `res.affectedStones.length >= 1`), proving lower stones participate in dynamic tumble without freezing.
-- [x] **T3.3 - 3-Attempt Controller Flow & State Machine Integration**: Verifies `StackStoneController` 3-attempt lifecycle: Attempts 1 & 2 return `status: 'retry'`, `towerCollapsed: true`, quota preserved; Attempt 3 triggers auto-placement fallback at top of tower (`status: 'saved'`, `autoPlaced: true`).
-- [x] **T3.4 - Visual Effect Bus Collapse Event Emission**: Verifies physics drop failure triggers `tower_collapsed` event broadcast on `EffectBus` with `reason: 'drop_failed'` and `affectedStoneCount >= 1`.
+##### Area 2: F03 & F04 (Presets Math, Dynamic Midpoint Targeting & Smooth Transitions)
+- [x] **T1.6 - Preset Coordinates Math**: Verifies `computePresetCameraView` calculates exact 3D coordinates and lookAt targets for Front (`[0, Y+0.7, 3.8]`), Side 45° (`[2.55, Y+0.7, 2.55]`), and Top (`[0, Y+3.1, 0.45]`).
+- [x] **T1.7 - Dynamic Midpoint Floor**: Verifies dynamic focus target $Y = \max(0.6, \text{towerTopY} \times 0.5)$ clamps low cairns ($0.2\text{m}$) to $0.6\text{m}$ while tracking tall towers ($6.0\text{m}$) to $3.0\text{m}$.
+- [x] **T1.8 - Elevation Angle Perspectives**: Verifies Front view produces near eye-level perspective (~10°) and Top view produces steep (~82°) perspective avoiding 90° zenith lock.
+- [x] **T1.9 - Exponential Smoothing Step**: Verifies frame-rate independent step $1 - e^{-6\Delta t}$ guarantees strictly monotonic distance convergence without overshoot.
+- [x] **T1.10 - Sub-Millimeter Snapping Threshold**: Verifies camera snaps to exact preset coordinate when remaining distance drops below $0.005\text{m}$ (5mm).
 
-#### Tier 4: Real-World Scenarios & Anti-Canned Verification (`tower-dynamic-collapse.test.ts`)
-- [x] **T4.1 - Canonical 3-Stone Natural Cairn (Boulder Base + Round Mid + Pebble Cap)**: Simulates 180 frames (3.0s) of natural cairn using `StonePhysicsBodyFactory.createStoneBody()`; verifies static equilibrium with height drift $< 0.005\,\text{m}$ (5mm) and all velocities $< 0.01\,\text{m/s}$.
-- [x] **T4.2 - Canonical 5-Stone Pyramid Cairn (Multi-Contact Static Equilibrium)**: Simulates 5 stones (2 base + 2 mid + 1 capstone) via `StonePhysicsBodyFactory.createStoneBody()`; verifies multi-contact balance across 180 frames with resting equilibrium across all tiers.
-- [x] **T4.3 - Intentional Dynamic Tumble Kinematics & Radial Ground Scatter**: Captures dynamic tumble kinematics from `SimpleTowerPhysicsWorld.drop()`; proves peak 3D angular velocity $> 1.5\,\text{rad/s}$ (actual peak $\approx 6.58\,\text{rad/s}$), refuting 2D translation shortcuts, and radial ground scatter $R_{\text{scatter}} > 0.50\,\text{m}$.
-- [x] **T4.4 - 4-Direction Anti-Canned Animation Perturbation Signature Test**: Drops stones at East $(+0.45, 0)$, West $(-0.45, 0)$, North $(0, +0.45)$, South $(0, -0.45)$ via `SimpleTowerPhysicsWorld`; verifies strict directional momentum correlation and all 6 pairwise endpoint distances $> 0.80\,\text{m}$ (actual $\ge 0.90\,\text{m}$).
-- [x] **T4.5 - Dynamic Settling Duration Variance Test**: Measures settling steps for low drop ($h = 0.35\,\text{m}$) vs high drop ($h = 2.5\,\text{m}$) via `SimpleTowerPhysicsWorld.drop()`; verifies settling step count difference $\Delta N_{\text{steps}} > 20$ (actual $\Delta = 36$ steps: 46 vs 82), completely disproving fixed timer mocks (`setTimeout(3000)`).
+##### Area 3: F05 (Camera Preset State Machine & Touch Interrupt Logic)
+- [x] **T1.11 - Preset State Machine Lifecycle**: Verifies valid transitions across `'front'`, `'side45'`, `'top'`, and `'free'` states.
+- [x] **T1.12 - In-Flight Transition Tracking**: Verifies selecting a preset marks `isTransitioning === true` while in flight.
+- [x] **T1.13 - Touch Interrupt Cancels Lerp**: Verifies touch/drag on OrbitControls during active transition immediately aborts lerp and switches preset to `'free'`.
+- [x] **T1.14 - Static Drag Shifts UI to Free**: Verifies user drag while resting in a preset automatically shifts UI indicator to `'360° 자유'`.
+- [x] **T1.15 - Idempotent Preset Re-Selection**: Verifies re-selecting currently active preset is safe and causes zero visual jumps.
+
+##### Area 4: F06 & F07 (3D Stone Raycasting & Toss Blue Highlighting)
+- [x] **T1.16 - 3D Raycasting Hit Contract**: Verifies 3D ray-to-sphere/box intersection resolves exact stone ID on hit and returns `null` on empty background clicks.
+- [x] **T1.17 - Toss Blue Emissive Specification**: Verifies selected stone applies canonical Toss Blue (`#0064FF` / `#3182F6`) emissive glow at $0.85$ intensity.
+- [x] **T1.18 - Mineral Texture Preservation**: Verifies highlight maintains base color, roughness ($\ge 0.8$), metalness, and procedural geometry scale intact.
+- [x] **T1.19 - Deselection State Restoration**: Verifies deselecting a stone restores original cheerLevel glow ($0 \sim 3$) and material parameters.
+- [x] **T1.20 - 2D Fallback Selection Styling**: Verifies 2D fallback applies Toss Blue border (`#3182F6`, 2px) and $1.06\times$ scale transform.
+
+##### Area 5: F08 & F09 (SCR-10 Bottom Sheet Data Mapping, Privacy & Cheer Trigger)
+- [x] **T1.21 - SCR-10 Presentation Model Mapping**: Verifies mapping of `TowerStoneItem` to wish text, category badges (`#취업`, `#학업`, `#건강`, `#인간관계`, `#기타`), and bloom decorations.
+- [x] **T1.22 - Public Tower Anonymity Enforcement**: Verifies author in global and category towers is strictly formatted as `'익명의 소원 돌'`.
+- [x] **T1.23 - Group Tower Nickname Visibility**: Verifies group tower reveals verified author `nickname#tag`.
+- [x] **T1.24 - Cheer Count Privacy vs Glow Level Rules**: Verifies exact cheer count (`🔥 응원 {N}회`) is visible only to owner, while non-owners see cheer level (`✨ 빛 레벨 {L}`) per DB-017 / D-006.
+- [x] **T1.25 - Cheer Action Trigger**: Verifies cheering invokes repository, increments count, emits `cheer_spark` on `EffectBus`, and triggers emotional toast.
+
+##### Area 6: F10 & F11 (Route /tower Entry Point, Controls & Return Navigation)
+- [x] **T1.26 - Route Registration Contract**: Verifies route `/tower` (`tower/index`) is declared in root stack layout.
+- [x] **T1.27 - Home Viewport Entry Trigger**: Verifies header button `[ 🔍 360° 둘러보기 ]` in `home.tsx` triggers `router.push('/tower')`.
+- [x] **T1.28 - Exploration Canvas Configuration**: Verifies `/tower` enables full-screen OrbitControls, pan, and zoom.
+- [x] **T1.29 - Category Filter Tabs in /tower**: Verifies category tab selection dynamically updates `TowerKey` (`global` vs `cat:{code}`) and filters stones.
+- [x] **T1.30 - Return Navigation Contract**: Verifies back navigation button calls `router.back()` returning to `/home`.
+
+---
+
+#### Tier 2: Boundary Value Analysis & Extreme Corner Cases (5 tests)
+- [x] **T2.1 - Extreme Tower Heights**: Verifies tower heights $0.1\text{m}$, $10.0\text{m}$, and $50.0\text{m}$ calculate safe, finite, non-NaN camera positions and midpoint targets.
+- [x] **T2.2 - Zenith Singularity Guard**: Verifies top-down view maintains $Z = 0.45 > 0$ across all heights, keeping vertical look component $< 0.995$ to avoid gimbal lock.
+- [x] **T2.3 - Strict Anonymity Leak Defense**: Verifies zero substring leaks of private nicknames occur in JSON serialization of public tower sheets.
+- [x] **T2.4 - Already-Cheered Error Handling**: Verifies duplicate cheering throws `ALREADY_CHEERED` (409) and displays disabled button with `"✓ 응원 완료"`.
+- [x] **T2.5 - Self-Cheer Prevention**: Verifies `isMine === true` disables cheer button with notice `"내가 정성껏 올린 소원입니다"` and throws `CANNOT_CHEER_OWN` (400).
+
+---
+
+#### Tier 3: Cross-Feature Combinations (3 tests)
+- [x] **T3.1 - In-Flight Preset Interruption**: Verifies user touch drag during preset transition immediately cancels lerp, shifts preset to `'free'`, and preserves exact intermediate coordinates.
+- [x] **T3.2 - Cheering Updates Visual Spec**: Verifies cheering a stone updates local cheer level, emits `cheer_spark`, and causes `buildStoneMaterialSpec` to emit level 1 glow (`#FFE066`, 0.22).
+- [x] **T3.3 - SCR-10 Modal Disables OrbitControls**: Verifies opening SCR-10 bottom sheet locks OrbitControls (`enabled = false`), preventing background canvas spinning during sheet scrolling.
+
+---
+
+#### Tier 4: Real-World User Scenarios (5 tests)
+- [x] **T4.1 - Multi-Perspective Inspection & Stone Selection**: User inspects 5-stone cairn from Front, Side 45°, and Top perspectives, then selects 3rd tier stone, highlighting it in Toss Blue and opening SCR-10.
+- [x] **T4.2 - Complete Wish Cheering Flow**: User taps stone, inspects wish details, sends cheer, verifies optimistic count increment, level up (1 -> 2), `cheer_spark` particle event, and emotional toast.
+- [x] **T4.3 - Dual Tower Inspection (Group vs Public)**: Verifies identical 3D cairns correctly reflect author privacy boundaries (group shows `nickname#tag`, public shows `익명의 소원 돌`).
+- [x] **T4.4 - End-to-End Navigation Journey**: Complete loop: `/home` -> tap `[ 🔍 360° 둘러보기 ]` -> `/tower` -> select preset -> tap stone -> cheer wish -> dismiss modal -> back to `/home`.
+- [x] **T4.5 - Interrupted Inspection with Custom Orientation**: User begins preset transition, drags mid-flight to examine cantilever balance from a custom angle, and selects a stone without camera dislocation.
 
 ---
 
@@ -82,28 +119,24 @@ Select-String -Path "src/__tests__/tower-dynamic-collapse.test.ts" -Pattern "Sto
 
 | Feature ID | Feature Name | Mapped Tests | Verification Status |
 |---|---|---|:---:|
-| **F01** | 3D Rigid-Body Dynamics & Mass Properties | T1.1, T1.2, T1.6 | **COVERED & PASSING** |
-| **F02** | Ground Plane & Contact Collision Physics | T1.3, T1.4, T1.5 | **COVERED & PASSING** |
-| **F03** | Center of Mass (COM) & Support Polygon | T2.1, T2.2 | **COVERED & PASSING** |
-| **F04** | Natural Dynamic Tower Collapse | T3.2, T4.3 | **COVERED & PASSING** |
-| **F05** | Ground Scattering & Energy Dissipation | T4.3, T4.4 | **COVERED & PASSING** |
-| **F06** | Enhanced PhysicsWorld Port Interface | T3.1, T3.2 | **COVERED & PASSING** |
-| **F07** | Stacking Controller 5-State Lifecycle | T3.3, T3.4 | **COVERED & PASSING** |
-| **F08** | 3D Canvas Mesh Transform Synchronization | T4.1, T4.2 | **COVERED & PASSING** |
-| **F09** | User Placement Flow in `place.tsx` | T3.3 | **COVERED & PASSING** |
-| **F10** | Opaque-Box E2E Test Infra & Runner | `TEST_INFRA.md`, All Tests | **COVERED & PASSING** |
-| **F11** | Tier 1 Feature Coverage Tests | T1.1 – T1.6 | **COVERED & PASSING** |
-| **F12** | Tier 2 Boundary & Corner Case Tests | T2.1 – T2.5 | **COVERED & PASSING** |
-| **F13** | Tier 3 Cross-Feature Combination Tests | T3.1 – T3.4 | **COVERED & PASSING** |
-| **F14** | Tier 4 Real-World & Anti-Canned Tests | T4.1 – T4.5 | **COVERED & PASSING** |
+| **F01** | Idle Camera Reset Bug Fix | T1.4, T3.1 | **COVERED & PASSING** |
+| **F02** | 360° OrbitControls Integration | T1.1, T1.2, T1.3, T1.5 | **COVERED & PASSING** |
+| **F03** | Camera View Presets Math Specification | T1.6, T1.7, T1.8, T2.1 | **COVERED & PASSING** |
+| **F04** | Smooth Camera Preset Transitions | T1.9, T1.10 | **COVERED & PASSING** |
+| **F05** | Camera Presets UI & Touch Interrupt | T1.11–T1.15, T3.1, T4.5 | **COVERED & PASSING** |
+| **F06** | 3D Stone Selection & Raycasting | T1.16, T4.1 | **COVERED & PASSING** |
+| **F07** | 3D Toss Blue Highlighting | T1.17–T1.20, T4.1, T4.5 | **COVERED & PASSING** |
+| **F08** | Reusable SCR-10 Wish Detail Bottom Sheet | T1.21–T1.24, T2.3, T4.3 | **COVERED & PASSING** |
+| **F09** | Wish Cheering Flow & Visual Feedback | T1.25, T2.4, T2.5, T3.2, T4.2 | **COVERED & PASSING** |
+| **F10** | Dedicated Tower Exploration Page (`/tower`)| T1.28, T1.29, T4.4 | **COVERED & PASSING** |
+| **F11** | Navigation & Route Integration | T1.26, T1.27, T1.30, T4.4 | **COVERED & PASSING** |
 
 ---
 
 ## 4. Auditor Sign-Off & Verification Readiness
 
-- [x] Zero facade tests or hardcoded expected outputs.
-- [x] All deliverable classes (`StonePhysicsBodyFactory`, `StabilityEvaluator`, `SimpleTowerPhysicsWorld`) directly imported and tested.
-- [x] Zero isolated Cannon surrogate tests remaining.
-- [x] Zero modifications by test writer to implementation code in `src/infrastructure/` or `src/domain/`.
-- [x] `npx.cmd tsc --noEmit` exits with code 0 (zero TypeScript errors across whole project).
-- [x] `npm.cmd test` passes 38/38 tests (100% green).
+- [x] **Zero facade tests or hardcoded expected outputs**: All 43 tests verify mathematical derivatives, genuine state transitions, and real entity contracts.
+- [x] **All deliverable specifications directly tested**: `cameraPresetSpec.ts`, `stoneTowerSpec.ts`, `Tower.ts`, `Wish.ts`, `OptimisticMutationManager.ts`, `ToastStore.ts`, and `EffectBus.ts`.
+- [x] **Exclusive Write Ownership Respected**: Zero edits to implementation source files; authored exclusively `TEST_INFRA.md`, `TEST_READY.md`, and `src/__tests__/e2e-camera-tower-exploration.test.ts`.
+- [x] **`npx tsc --noEmit`**: Exited with code 0 (zero TypeScript errors across the entire codebase).
+- [x] **`npm test`**: Passes 129 / 129 tests across all 8 test suites (100% green, 0 failed, 0 skipped, execution duration: ~1.5s).

@@ -1,17 +1,21 @@
 import { type BloomType } from '../value-objects/BloomType.ts';
 import { type CheerLevelValue } from '../value-objects/CheerLevel.ts';
-import { TowerKey } from '../value-objects/TowerKey.ts';
+import { type CategoryCode, TowerKey } from '../value-objects/TowerKey.ts';
 import { Stone } from './Stone.ts';
 import { type WishId, type WishStatus } from './Wish.ts';
 
 export interface TowerStoneItem {
   readonly id: WishId;
+  readonly content?: string;
+  readonly category?: CategoryCode;
   readonly stone: Stone;
   readonly status: Extract<WishStatus, 'active' | 'fulfilled'>;
   readonly bloom: BloomType | null;
   readonly cheerLevel: CheerLevelValue;
+  readonly cheerCount?: number;
   readonly isMine: boolean;
   readonly nickname: string | null;
+  readonly createdAt?: Date;
 }
 
 export interface TowerStats {

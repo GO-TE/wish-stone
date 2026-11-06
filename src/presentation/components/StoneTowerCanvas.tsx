@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Stone, type StoneShape } from '../../domain/entities/Stone.ts';
 import { type TowerStoneItem } from '../../domain/entities/Tower.ts';
@@ -8,6 +9,10 @@ import { type WishId } from '../../domain/entities/Wish.ts';
 import { type SimulationFrame } from '../../domain/ports/PhysicsWorld.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
 import { type StackPlacementPhase } from '../controllers/StackStoneController.ts';
+import {
+  type CameraPresetType,
+  computePresetCameraView,
+} from './cameraPresetSpec.ts';
 import {
   buildStoneGeometrySpec,
   buildTowerSceneGraph,
@@ -17,6 +22,7 @@ import {
 } from './stoneTowerSpec.ts';
 
 export * from './stoneTowerSpec.ts';
+export * from './cameraPresetSpec.ts';
 
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
@@ -32,6 +38,13 @@ export interface StoneTowerCanvasProps {
   readonly onPlaybackComplete?: () => void;
   readonly onCollapseAnimationComplete?: () => void;
   readonly renderMode?: '3d' | '2d' | 'auto';
+  readonly enableOrbitControls?: boolean;
+  readonly cameraPreset?: CameraPresetType;
+  readonly onCameraPresetChange?: (preset: CameraPresetType) => void;
+  readonly towerTopY?: number;
+  readonly enablePan?: boolean;
+  readonly enableZoom?: boolean;
+  readonly selectedStoneId?: WishId | null;
 }
 
 function normalizeTowerStoneItems(
@@ -165,11 +178,13 @@ function StoneMesh3D({
   index,
   meshMapRef,
   onSelect,
+  isSelected = false,
 }: {
   node: StoneRenderNode;
   index: number;
   meshMapRef: React.MutableRefObject<Map<string, THREE.Mesh>>;
   onSelect?: () => void;
+  isSelected?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -213,10 +228,10 @@ function StoneMesh3D({
       )}
       <meshStandardMaterial
         color={node.material.baseColor}
-        roughness={node.material.roughness}
-        metalness={node.material.metalness}
-        emissive={node.material.emissiveColor}
-        emissiveIntensity={node.material.emissiveIntensity}
+        roughness={isSelected ? 0.3 : node.material.roughness}
+        metalness={isSelected ? 0.1 : node.material.metalness}
+        emissive={isSelected ? '#0064FF' : node.material.emissiveColor}
+        emissiveIntensity={isSelected ? 0.85 : node.material.emissiveIntensity}
         flatShading={geo.flatShading}
       />
     </mesh>
@@ -320,25 +335,20 @@ function TrajectorySynchronizer({
   }, [trajectory, phase]);
 
   useFrame(({ camera }) => {
-    if (!initialCameraPosRef.current) {
-      initialCameraPosRef.current = camera.position.clone();
-    }
-
     if (
       phase === 'IDLE' ||
       !trajectory ||
       trajectory.length === 0 ||
       completedRef.current
     ) {
-      if (
-        initialCameraPosRef.current &&
-        camera.position.distanceTo(initialCameraPosRef.current) > 0.001
-      ) {
-        camera.position.lerp(initialCameraPosRef.current, 0.1);
-      }
+      initialCameraPosRef.current = null;
       return;
     }
     if (playbackStartTimeRef.current === null) return;
+
+    if (!initialCameraPosRef.current) {
+      initialCameraPosRef.current = camera.position.clone();
+    }
 
     const elapsed = (performance.now() - playbackStartTimeRef.current) / 1000;
     const result = interpolateTrajectoryFrame(trajectory, elapsed);
@@ -364,13 +374,79 @@ function TrajectorySynchronizer({
         initialCameraPosRef.current.x + (Math.random() - 0.5) * intensity;
       camera.position.y =
         initialCameraPosRef.current.y + (Math.random() - 0.5) * intensity;
-    } else if (initialCameraPosRef.current) {
+    } else if (collapsedShake && initialCameraPosRef.current) {
       camera.position.lerp(initialCameraPosRef.current, 0.15);
     }
 
     if (result.isComplete) {
       completedRef.current = true;
       onPlaybackComplete?.();
+    }
+  });
+
+  return null;
+}
+
+interface TowerCameraControllerProps {
+  readonly preset?: CameraPresetType;
+  readonly towerTopY?: number;
+  readonly controlsRef?: React.MutableRefObject<any>;
+}
+
+function TowerCameraController({
+  preset,
+  towerTopY,
+  controlsRef,
+}: TowerCameraControllerProps) {
+  const { controls } = useThree() as any;
+  const isTransitioningRef = useRef(false);
+  const targetPosRef = useRef(new THREE.Vector3());
+  const targetLookAtRef = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    if (!preset || preset === 'free') {
+      isTransitioningRef.current = false;
+      return;
+    }
+
+    const config = computePresetCameraView(preset, towerTopY);
+    targetPosRef.current.set(config.position[0], config.position[1], config.position[2]);
+    targetLookAtRef.current.set(config.target[0], config.target[1], config.target[2]);
+    isTransitioningRef.current = true;
+  }, [preset, towerTopY]);
+
+  useFrame((state, delta) => {
+    if (!isTransitioningRef.current || !preset || preset === 'free') {
+      return;
+    }
+
+    const activeControls = controlsRef?.current || controls || (state as any).controls;
+    const step = 1 - Math.exp(-Math.min(delta, 0.1) * 6.0);
+    const stepClamped = Math.max(0, Math.min(step, 1));
+
+    state.camera.position.lerp(targetPosRef.current, stepClamped);
+
+    if (activeControls && activeControls.target) {
+      activeControls.target.lerp(targetLookAtRef.current, stepClamped);
+      activeControls.update?.();
+    } else {
+      state.camera.lookAt(targetLookAtRef.current);
+    }
+
+    const distPos = state.camera.position.distanceTo(targetPosRef.current);
+    const distTarget = activeControls?.target
+      ? activeControls.target.distanceTo(targetLookAtRef.current)
+      : 0;
+
+    if (distPos < 0.005 && distTarget < 0.005) {
+      state.camera.position.copy(targetPosRef.current);
+      if (activeControls && activeControls.target) {
+        activeControls.target.copy(targetLookAtRef.current);
+        activeControls.update?.();
+      } else {
+        state.camera.lookAt(targetLookAtRef.current);
+      }
+      isTransitioningRef.current = false;
     }
   });
 
@@ -396,6 +472,13 @@ export function StoneTowerCanvas({
   onPlaybackComplete,
   onCollapseAnimationComplete,
   renderMode = 'auto',
+  enableOrbitControls = false,
+  cameraPreset,
+  onCameraPresetChange,
+  towerTopY,
+  enablePan = false,
+  enableZoom = true,
+  selectedStoneId,
 }: StoneTowerCanvasProps) {
   const normalizedStones = useMemo(() => normalizeTowerStoneItems(stones), [stones]);
   const nodes = buildTowerSceneGraph(normalizedStones);
@@ -404,6 +487,15 @@ export function StoneTowerCanvas({
   const [randomSeed, setRandomSeed] = useState(42);
   const [lushMossEnabled, setLushMossEnabled] = useState(true);
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const orbitControlsRef = useRef<any>(null);
+
+  const effectiveSelectedId = selectedStoneId !== undefined ? selectedStoneId : selectedNode?.id;
+  const effectiveSelectedNode = useMemo(() => {
+    if (effectiveSelectedId) {
+      return nodes.find((n) => n.id === effectiveSelectedId) ?? null;
+    }
+    return null;
+  }, [effectiveSelectedId, nodes]);
 
   const webGLSupported = useMemo(() => isWebGLAvailable(), []);
   const use3D =
@@ -564,6 +656,28 @@ export function StoneTowerCanvas({
             />
             <hemisphereLight args={['#EAE4DC', '#1E2026', 0.4]} />
 
+            {enableOrbitControls && (
+              <OrbitControls
+                ref={orbitControlsRef}
+                makeDefault
+                enableDamping
+                dampingFactor={0.08}
+                minDistance={1.5}
+                maxDistance={7.0}
+                maxPolarAngle={Math.PI * 0.49}
+                minPolarAngle={0.05}
+                enablePan={enablePan ?? false}
+                enableZoom={enableZoom ?? true}
+                onStart={() => onCameraPresetChange?.('free')}
+              />
+            )}
+
+            <TowerCameraController
+              preset={cameraPreset}
+              towerTopY={towerTopY}
+              controlsRef={orbitControlsRef}
+            />
+
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
               <planeGeometry args={[8, 8]} />
               <shadowMaterial opacity={0.28} />
@@ -575,6 +689,7 @@ export function StoneTowerCanvas({
                 node={node}
                 index={index}
                 meshMapRef={meshMapRef}
+                isSelected={node.id === effectiveSelectedId}
                 onSelect={() => handleStonePress(node)}
               />
             ))}
@@ -687,7 +802,7 @@ export function StoneTowerCanvas({
                     // 자연스러운 미세 틸트 각도
                     const tiltDegree = `${((hash >> 4) % 7) - 3}deg`;
 
-                    const isSelected = selectedNode?.id === node.id;
+                    const isSelected = node.id === effectiveSelectedId;
 
                     // 자연석 색상
                     let stoneColor = node.material.baseColor;
@@ -730,7 +845,7 @@ export function StoneTowerCanvas({
                               backgroundColor: stoneColor,
                               transform: [
                                 { rotate: tiltDegree },
-                                { scale: pressed ? 0.96 : isSelected ? 1.05 : 1 },
+                                { scale: pressed ? 0.96 : isSelected ? 1.06 : 1 },
                               ],
                             },
                             isSelected && styles.stoneSelectedHighlight,
@@ -798,14 +913,14 @@ export function StoneTowerCanvas({
 
           {/* 선택한 돌 정보 툴팁 */}
           {showControls && (
-            selectedNode ? (
+            effectiveSelectedNode ? (
               <View style={styles.infoPill}>
                 <Text style={styles.infoPillText}>
-                  {selectedNode.nicknameLabel
-                    ? `${selectedNode.nicknameLabel}님의 소원 돌`
+                  {effectiveSelectedNode.nicknameLabel
+                    ? `${effectiveSelectedNode.nicknameLabel}님의 소원 돌`
                     : '익명의 소원 돌'}
-                  {selectedNode.decoration
-                    ? ` · ${selectedNode.decoration.label}`
+                  {effectiveSelectedNode.decoration
+                    ? ` · ${effectiveSelectedNode.decoration.label}`
                     : ''}
                 </Text>
               </View>
