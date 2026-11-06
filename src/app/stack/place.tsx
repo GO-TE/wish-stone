@@ -61,7 +61,7 @@ export default function PlaceStone3DScreen() {
   const [fallenPose, setFallenPose] = useState<Pose | null>(null);
   const [isConfirmingFallen, setIsConfirmingFallen] = useState(false);
   const [statusMessage, setStatusMessage] = useState(
-    '돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요'
+    '돌을 위로 끌어올려 돌탑 꼭대기에 균형을 맞춰보세요'
   );
   const [isNearTarget, setIsNearTarget] = useState(false);
   const [isOffCenter, setIsOffCenter] = useState(false);
@@ -213,7 +213,7 @@ export default function PlaceStone3DScreen() {
     setFallenPose(null);
     setIsNearTarget(false);
     setIsOffCenter(false);
-    setStatusMessage('돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요');
+    setStatusMessage('돌을 위로 끌어올려 돌탑 꼭대기에 균형을 맞춰보세요');
   };
 
   const handleDrop = async (dropPose: Pose) => {
@@ -410,7 +410,7 @@ export default function PlaceStone3DScreen() {
             setPhase('PLACING');
             controller.startPlacing();
             safeHaptic('grab');
-            setStatusMessage('3D 소원 돌을 잡았습니다. 돌탑 꼭대기(🎯)로 끌어올리세요!');
+            setStatusMessage('3D 소원 돌을 잡았습니다. 돌탑 꼭대기로 끌어올리세요!');
           }}
           onStoneDragMove={(result: DragWorldPositionResult) => {
             setIsNearTarget(result.isOverDropZone);
@@ -420,7 +420,7 @@ export default function PlaceStone3DScreen() {
             } else if (result.isOverDropZone) {
               setStatusMessage('✨ 안정적인 균형 위치 (손을 놓으면 탑 위에 안착합니다)');
             } else {
-              setStatusMessage('돌탑 꼭대기(🎯)를 향해 위로 끌어올려 보세요');
+              setStatusMessage('돌탑 꼭대기를 향해 위로 끌어올려 보세요');
             }
           }}
           onStoneDrop={(dropPose) => {
@@ -430,7 +430,7 @@ export default function PlaceStone3DScreen() {
             setPhase('IDLE');
             setIsNearTarget(false);
             setIsOffCenter(false);
-            setStatusMessage('돌탑 꼭대기(🎯)까지 더 높이 끌어올려 놓아보세요!');
+            setStatusMessage('돌탑 꼭대기까지 더 높이 끌어올려 놓아보세요!');
           }}
           collapsedShake={phase === 'COLLAPSING'}
           trajectory={currentTrajectory ?? state.lastSimulationTrajectory}
