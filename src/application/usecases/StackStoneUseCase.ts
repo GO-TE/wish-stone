@@ -20,6 +20,17 @@ export interface WishDraft {
   readonly stone: Stone;
 }
 
+export type StackStoneSavedResult = {
+  readonly status: 'saved';
+  readonly id: WishId;
+  readonly category: CategoryCode;
+  readonly pose: Pose;
+  readonly autoPlaced: boolean;
+  readonly trajectory?: readonly SimulationFrame[];
+  readonly affectedStones?: readonly CollapsedStonePose[];
+  readonly dropResult?: DropResult;
+};
+
 export type StackStoneResult =
   | {
       readonly status: 'retry';
@@ -29,16 +40,7 @@ export type StackStoneResult =
       readonly affectedStones?: readonly CollapsedStonePose[];
       readonly dropResult?: DropResult;
     }
-  | {
-      readonly status: 'saved';
-      readonly id: WishId;
-      readonly category: CategoryCode;
-      readonly pose: Pose;
-      readonly autoPlaced: boolean;
-      readonly trajectory?: readonly SimulationFrame[];
-      readonly affectedStones?: readonly CollapsedStonePose[];
-      readonly dropResult?: DropResult;
-    };
+  | StackStoneSavedResult;
 
 const MAX_ATTEMPTS = 3;
 
@@ -47,6 +49,7 @@ const MAX_ATTEMPTS = 3;
  * - 카테고리 미지정 시 본문 기반으로 자동 분류한다 (D-016).
  * - 무게중심을 벗어나 물리 안착에 실패하면 돌탑이 흔들리거나 무너지는 물리 연출(tower_collapsed)을 발행한다 (D-019).
  * - 최대 3회까지 재시도할 수 있고, 3회 실패 시 탑 꼭대기에 자동 안착시킨다.
+ * - 돌이 굴러떨어져 바닥에 멈췄을 때 사용자가 그 자리에 그대로 안착시키기로 선택하면 해당 위치로 소원을 확정 저장한다 (D-022).
  */
 export class StackStoneUseCase {
   private readonly wishes: WishRepository;
@@ -138,6 +141,43 @@ export class StackStoneUseCase {
       trajectory: dropResult.trajectory,
       affectedStones: dropResult.affectedStones,
       dropResult,
+    };
+  }
+
+  /**
+   * 굴러떨어진 돌을 사용자가 그 자리(바닥/기초 옆)에 그대로 두기로 선택했을 때 확정 저장 (D-022)
+   * "떨어져서 그것도 하나의 탑이 될 수 있으니까"
+   */
+  async confirmFallen(
+    draft: WishDraft,
+    fallenPose: Pose
+  ): Promise<StackStoneSavedResult> {
+    Wish.validateContent(draft.content);
+    const trimmedContent = draft.content.trim();
+    const resolvedCategory =
+      draft.category ?? CategoryAutoClassifier.classify(trimmedContent);
+
+    const stoneWithPose = draft.stone.withPose(fallenPose);
+    const id = await this.wishes.create({
+      content: trimmedContent,
+      category: resolvedCategory,
+      scope: draft.scope,
+      stone: stoneWithPose,
+    });
+
+    this.effects?.emit({
+      type: 'stone_stacked',
+      wishId: id,
+      pose: fallenPose,
+      autoPlaced: false,
+    });
+
+    return {
+      status: 'saved',
+      id,
+      category: resolvedCategory,
+      pose: fallenPose,
+      autoPlaced: false,
     };
   }
 }

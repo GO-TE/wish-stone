@@ -36,7 +36,7 @@ function safeHaptic(type: 'grab' | 'warning' | 'success') {
 /**
  * SCR-07 쌓기 (일반 3D & 실감 드래그 인터랙션) 화면 (`/stack/place`)
  * Toss-Style Minimal Aesthetic Revamp
- * 근거: 화면 설계서.md 5장, DB-010, D-019
+ * 근거: 화면 설계서.md 5장, DB-010, D-019, D-022
  */
 export default function PlaceStone3DScreen() {
   const router = useRouter();
@@ -53,6 +53,8 @@ export default function PlaceStone3DScreen() {
     readonly SimulationFrame[] | undefined
   >(undefined);
   const [renderedDroppedStone, setRenderedDroppedStone] = useState<Stone | null>(null);
+  const [fallenPose, setFallenPose] = useState<Pose | null>(null);
+  const [isConfirmingFallen, setIsConfirmingFallen] = useState(false);
   const [statusMessage, setStatusMessage] = useState(
     '돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요'
   );
@@ -60,7 +62,6 @@ export default function PlaceStone3DScreen() {
   const [isOffCenter, setIsOffCenter] = useState(false);
 
   const collapseTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isResettingRef = useRef<boolean>(false);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function PlaceStone3DScreen() {
     });
   }, [controller]);
 
-  // Default sample tower fallback
+  // Default sample tower fallback - no overlap in 3D (base-1 at -0.34, base-2 at +0.34, base-3 on top at 0.48)
   const [activeTower, setActiveTower] = useState<Tower>(() => {
     return new Tower(
       controller.getState().scope ?? TowerKey.global(),
@@ -90,7 +91,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'boulder',
             color: '#3E4947',
-            pose: new Pose({ x: -0.15, y: 0, z: 0 }),
+            pose: new Pose({ x: -0.34, y: 0, z: 0 }),
           }),
           status: 'active',
           bloom: null,
@@ -103,7 +104,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'flat',
             color: '#262930',
-            pose: new Pose({ x: 0.15, y: 0, z: 0 }),
+            pose: new Pose({ x: 0.34, y: 0, z: 0 }),
           }),
           status: 'active',
           bloom: null,
@@ -116,7 +117,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'round',
             color: '#6E675F',
-            pose: new Pose({ x: 0, y: 0.35, z: 0 }),
+            pose: new Pose({ x: 0, y: 0.48, z: 0 }),
           }),
           status: 'active',
           bloom: 'sprout',
@@ -153,42 +154,73 @@ export default function PlaceStone3DScreen() {
     return new Pose({ x: clampedX, y: dropY, z: 0 });
   };
 
-  const resetAfterCollapse = () => {
+  /**
+   * 돌이 미끄러져 굴러떨어졌을 때의 처리:
+   * 자동으로 리셋하지 않고, 떨어진 자리 그대로 안착시키거나 다시 올려볼 수 있는 선택 상태(FALLEN_CHOICE)로 진입 (D-022)
+   */
+  const handleCollapseComplete = (finalPoseOverride?: Pose) => {
     if (collapseTimerRef.current) {
       clearTimeout(collapseTimerRef.current);
       collapseTimerRef.current = null;
     }
-    if (isResettingRef.current) return;
-    isResettingRef.current = true;
+    const poseToUse =
+      finalPoseOverride ?? fallenPose ?? new Pose({ x: 0.55, y: 0.05, z: 0 });
+    setFallenPose(poseToUse);
+    setRenderedDroppedStone(state.selectedStone.withPose(poseToUse));
+    setPhase('FALLEN_CHOICE');
+    setStatusMessage('🍃 돌이 아래로 굴러떨어졌습니다. 이것도 하나의 탑이 될 수 있어요.');
+  };
 
+  /**
+   * 떨어진 그 자리에 그대로 소원 돌을 확정 안착하기
+   */
+  const handleConfirmFallen = async () => {
+    if (!fallenPose || isConfirmingFallen) return;
+    setIsConfirmingFallen(true);
+
+    try {
+      await controller.confirmFallenPlacement(fallenPose);
+      safeHaptic('success');
+      setPhase('SETTLED');
+      setStatusMessage('✨ 떨어진 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
+      setTimeout(() => {
+        router.replace('/home');
+      }, 1200);
+    } catch {
+      setStatusMessage('일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+      setIsConfirmingFallen(false);
+    }
+  };
+
+  /**
+   * 사용자가 원하여 다시 탑 위로 올려보기를 선택했을 때
+   */
+  const handleRetryPlacement = () => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    controller.retryPlacement();
+    setPhase('IDLE');
+    setRenderedDroppedStone(null);
+    setCurrentTrajectory(undefined);
+    setFallenPose(null);
+    setIsNearTarget(false);
+    setIsOffCenter(false);
+    setStatusMessage('돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요');
     Animated.spring(pan, {
       toValue: { x: 0, y: 0 },
       useNativeDriver: false,
-    }).start(() => {
-      controller.resetPlacement();
-      setPhase('IDLE');
-      setRenderedDroppedStone(null);
-      setCurrentTrajectory(undefined);
-      setIsNearTarget(false);
-      setIsOffCenter(false);
-      setStatusMessage('돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요');
-      isResettingRef.current = false;
-    });
-  };
-
-  const handleCollapseComplete = () => {
-    if (phase !== 'COLLAPSING') return;
-    // Allow 300ms post-collapse settling pause before triggering spring reset
-    if (collapseTimerRef.current) {
-      clearTimeout(collapseTimerRef.current);
-    }
-    collapseTimerRef.current = setTimeout(() => {
-      resetAfterCollapse();
-    }, 300);
+    }).start();
   };
 
   const handleDrop = async (dropPose: Pose) => {
-    if (phase === 'BALANCING' || phase === 'COLLAPSING' || phase === 'SETTLED') {
+    if (
+      phase === 'BALANCING' ||
+      phase === 'COLLAPSING' ||
+      phase === 'FALLEN_CHOICE' ||
+      phase === 'SETTLED'
+    ) {
       return;
     }
 
@@ -210,23 +242,25 @@ export default function PlaceStone3DScreen() {
       if (res.status === 'retry') {
         setPhase('COLLAPSING');
         safeHaptic('warning');
-        setStatusMessage(
-          `💥 중심을 잃어 돌탑이 무너졌어요! 다시 올려볼까요? (${res.attempt}/3회)`
-        );
+        setStatusMessage(`🍃 중심을 잃고 굴러떨어지는 중... (${res.attempt}/3회)`);
+
+        // Record the final resting pose where it landed on the ground
+        const finalPose =
+          res.dropResult?.pose ?? new Pose({ x: 0.55, y: 0.05, z: 0 });
+        setFallenPose(finalPose);
 
         // Keep renderedDroppedStone mounted for trajectory playback!
-        // Dynamic playback duration based on trajectory length with safety margin
         const trajectoryFrames = res.trajectory?.length ?? 0;
         const dynamicTimeoutMs = Math.max(
           1200,
-          Math.ceil(trajectoryFrames * (1000 / 60)) + 500
+          Math.ceil(trajectoryFrames * (1000 / 60)) + 400
         );
 
         if (collapseTimerRef.current) {
           clearTimeout(collapseTimerRef.current);
         }
         collapseTimerRef.current = setTimeout(() => {
-          resetAfterCollapse();
+          handleCollapseComplete(finalPose);
         }, dynamicTimeoutMs);
         return;
       }
@@ -234,7 +268,6 @@ export default function PlaceStone3DScreen() {
       // Settled or 3rd-attempt auto-placed
       setPhase('SETTLED');
       safeHaptic('success');
-      // Keep dropped stone mounted with settled pose
       setRenderedDroppedStone(state.selectedStone.withPose(res.pose));
       setStatusMessage(
         res.autoPlaced
@@ -250,6 +283,7 @@ export default function PlaceStone3DScreen() {
       setPhase('IDLE');
       setRenderedDroppedStone(null);
       setCurrentTrajectory(undefined);
+      setFallenPose(null);
       setStatusMessage('일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
       Animated.spring(pan, {
         toValue: { x: 0, y: 0 },
@@ -296,7 +330,11 @@ export default function PlaceStone3DScreen() {
 
   const stoneColor = state.selectedStone?.color || '#5A6577';
   const isInteracting = phase === 'PLACING';
-  const isBusy = phase === 'BALANCING' || phase === 'COLLAPSING' || phase === 'SETTLED';
+  const isBusy =
+    phase === 'BALANCING' ||
+    phase === 'COLLAPSING' ||
+    phase === 'FALLEN_CHOICE' ||
+    phase === 'SETTLED';
 
   return (
     <View style={styles.container}>
@@ -307,6 +345,7 @@ export default function PlaceStone3DScreen() {
           style={[
             styles.status,
             phase === 'COLLAPSING' && styles.statusDanger,
+            phase === 'FALLEN_CHOICE' && styles.statusPeaceful,
             phase === 'SETTLED' && styles.statusSuccess,
           ]}
         >
@@ -314,8 +353,14 @@ export default function PlaceStone3DScreen() {
         </Text>
       </View>
 
-      {/* Collapse Alert Banner */}
-      {phase === 'COLLAPSING' || state.towerCollapsed ? (
+      {/* Dynamic Status / Alert Banner */}
+      {phase === 'FALLEN_CHOICE' ? (
+        <View style={styles.peacefulBox}>
+          <Text style={styles.peacefulAlert}>
+            🍃 돌이 굴러떨어져 바닥에 안착했습니다. 이것도 하나의 탑이 될 수 있어요.
+          </Text>
+        </View>
+      ) : phase === 'COLLAPSING' || state.towerCollapsed ? (
         <View style={styles.collapsedBox}>
           <Text style={styles.collapsedAlert}>
             ⚠️ 균형을 잃고 돌탑이 무너졌습니다 (동적 물리 붕괴 연출 중)
@@ -357,8 +402,8 @@ export default function PlaceStone3DScreen() {
           phase={phase}
           droppedStone={renderedDroppedStone}
           showControls={false}
-          onCollapseAnimationComplete={handleCollapseComplete}
-          onPlaybackComplete={handleCollapseComplete}
+          onCollapseAnimationComplete={() => handleCollapseComplete()}
+          onPlaybackComplete={() => handleCollapseComplete()}
         />
 
         {/* Draggable User Stone */}
@@ -391,47 +436,76 @@ export default function PlaceStone3DScreen() {
         </Text>
       </View>
 
-      {/* Bottom Action Buttons */}
-      <View style={styles.buttonRow}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            isBusy && styles.disabledButton,
-            pressed && !isBusy && { opacity: 0.7 },
-          ]}
-          disabled={isBusy}
-          onPress={() =>
-            handleDrop(
-              new Pose({
-                x: 0.45,
-                y: Number((activeTower.topY() + 0.3).toFixed(4)),
-                z: 0,
-              })
-            )
-          }
-        >
-          <Text style={styles.secondaryText}>빗맞힘 테스트 (전복)</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            isBusy && styles.disabledButton,
-            pressed && !isBusy && { opacity: 0.9 },
-          ]}
-          disabled={isBusy}
-          onPress={() =>
-            handleDrop(
-              new Pose({
-                x: 0,
-                y: Number((activeTower.topY() + 0.25).toFixed(4)),
-                z: 0,
-              })
-            )
-          }
-        >
-          <Text style={styles.primaryText}>🎯 즉시 안착하기</Text>
-        </Pressable>
-      </View>
+      {/* Bottom Action Buttons: Choice UX when stone fell, or direct drop controls */}
+      {phase === 'FALLEN_CHOICE' ? (
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              isConfirmingFallen && styles.disabledButton,
+              pressed && !isConfirmingFallen && { opacity: 0.7 },
+            ]}
+            disabled={isConfirmingFallen}
+            onPress={handleRetryPlacement}
+          >
+            <Text style={styles.secondaryText}>
+              ↺ 다시 올려보기 ({Math.min(state.attempt + 1, 3)}/3회)
+            </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              isConfirmingFallen && styles.disabledButton,
+              pressed && !isConfirmingFallen && { opacity: 0.9 },
+            ]}
+            disabled={isConfirmingFallen}
+            onPress={handleConfirmFallen}
+          >
+            <Text style={styles.primaryText}>⛰️ 이 자리에 그대로 두기</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              isBusy && styles.disabledButton,
+              pressed && !isBusy && { opacity: 0.7 },
+            ]}
+            disabled={isBusy}
+            onPress={() =>
+              handleDrop(
+                new Pose({
+                  x: 0.45,
+                  y: Number((activeTower.topY() + 0.3).toFixed(4)),
+                  z: 0,
+                })
+              )
+            }
+          >
+            <Text style={styles.secondaryText}>빗맞힘 테스트 (전복)</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              isBusy && styles.disabledButton,
+              pressed && !isBusy && { opacity: 0.9 },
+            ]}
+            disabled={isBusy}
+            onPress={() =>
+              handleDrop(
+                new Pose({
+                  x: 0,
+                  y: Number((activeTower.topY() + 0.25).toFixed(4)),
+                  z: 0,
+                })
+              )
+            }
+          >
+            <Text style={styles.primaryText}>🎯 즉시 안착하기</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -468,8 +542,27 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.danger,
     fontWeight: '700',
   },
+  statusPeaceful: {
+    color: '#34C759',
+    fontWeight: '700',
+  },
   statusSuccess: {
     color: '#2E7D32',
+    fontWeight: '700',
+  },
+  peacefulBox: {
+    backgroundColor: 'rgba(52, 199, 89, 0.12)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: TossTheme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 199, 89, 0.28)',
+    marginBottom: 8,
+  },
+  peacefulAlert: {
+    ...TossTheme.typography.micro,
+    color: '#34C759',
+    textAlign: 'center',
     fontWeight: '700',
   },
   collapsedBox: {
@@ -538,16 +631,16 @@ const styles = StyleSheet.create({
   dragTrackArea: {
     width: '100%',
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'center',
+    height: 90,
   },
   draggableStone: {
-    width: 154,
-    height: 68,
-    // 자연석 실루엣: 상단 큰 곡선, 하단 완만한 기초면 (알약/캡슐 방지)
-    borderTopLeftRadius: 42,
-    borderTopRightRadius: 36,
-    borderBottomRightRadius: 20,
-    borderBottomLeftRadius: 22,
+    width: 130,
+    height: 52,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 14,
+    borderBottomLeftRadius: 16,
     borderWidth: 2,
     borderTopWidth: 3,
     borderTopColor: 'rgba(255, 255, 255, 0.45)',

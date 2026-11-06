@@ -418,6 +418,19 @@ test('Unit 2 StackStoneController (SCR-05 ~ SCR-09): 자동 카테고리 프리�
   assert.equal(stackController.getState().phase, 'IDLE');
   assert.equal(stackController.getState().towerCollapsed, false);
 
+  // D-022: 돌이 미끄러져 떨어졌을 때 [이 자리에 그대로 두기] 선택 시 확정 저장 검증
+  stackController.grantRewardQuotaBonus(1);
+  const fallenPose = new Pose({ x: 0.65, y: 0.05, z: 0 });
+  const fallenConfirmed = await stackController.confirmFallenPlacement(fallenPose);
+  assert.equal(fallenConfirmed.status, 'saved');
+  assert.equal(fallenConfirmed.pose.position.x, 0.65);
+  assert.equal(stackController.getState().phase, 'SETTLED');
+  assert.equal(stackController.getState().quota.remaining, 0);
+
+  // retryPlacement(): IDLE 복귀 검증
+  stackController.retryPlacement();
+  assert.equal(stackController.getState().phase, 'IDLE');
+
   unsubscribe();
 
   // SCR-09 AR 사진 촬영

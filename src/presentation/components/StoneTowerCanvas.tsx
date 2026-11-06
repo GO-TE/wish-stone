@@ -85,11 +85,11 @@ interface StoneGeometryProfile {
 }
 
 const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: { baseWidth: 168, baseHeight: 56, rTL: 48, rTR: 38, rBR: 18, rBL: 22 },
-  round: { baseWidth: 138, baseHeight: 62, rTL: 44, rTR: 46, rBR: 24, rBL: 28 },
-  tall: { baseWidth: 104, baseHeight: 80, rTL: 48, rTR: 44, rBR: 22, rBL: 26 },
-  pebble: { baseWidth: 92, baseHeight: 48, rTL: 36, rTR: 38, rBR: 18, rBL: 20 },
-  boulder: { baseWidth: 184, baseHeight: 68, rTL: 54, rTR: 44, rBR: 22, rBL: 26 },
+  flat: { baseWidth: 140, baseHeight: 46, rTL: 26, rTR: 22, rBR: 12, rBL: 14 },
+  round: { baseWidth: 118, baseHeight: 52, rTL: 26, rTR: 26, rBR: 14, rBL: 16 },
+  tall: { baseWidth: 88, baseHeight: 68, rTL: 28, rTR: 24, rBR: 14, rBL: 16 },
+  pebble: { baseWidth: 80, baseHeight: 40, rTL: 20, rTR: 22, rBR: 12, rBL: 14 },
+  boulder: { baseWidth: 152, baseHeight: 56, rTL: 30, rTR: 24, rBR: 14, rBL: 16 },
 };
 
 function pseudoHash(str: string): number {
@@ -452,10 +452,14 @@ export function StoneTowerCanvas({
     };
   }, [use3D, trajectory, onPlaybackComplete, onCollapseAnimationComplete]);
 
-  // IDLE 상태 진입 시 또는 궤적이 없을 때 모든 3D 메쉬를 원래 위치 및 직립 회전으로 복구
+  // IDLE 또는 FALLEN_CHOICE 상태 진입 시 또는 궤적이 없을 때 모든 3D 메쉬를 원래 위치 및 직립 회전으로 복구
   useEffect(() => {
     const hasTrajectory = Boolean(trajectory && trajectory.length > 0);
-    if (phase === 'IDLE' || (!hasTrajectory && phase !== 'COLLAPSING')) {
+    if (
+      phase === 'IDLE' ||
+      phase === 'FALLEN_CHOICE' ||
+      (!hasTrajectory && phase !== 'COLLAPSING')
+    ) {
       resetTowerMeshTransforms(meshMapRef.current, nodes, droppedStone);
     }
   }, [phase, trajectory, nodes, droppedStone]);
@@ -500,7 +504,7 @@ export function StoneTowerCanvas({
                   towerStyle === 'pebble' && styles.styleChipTextActive,
                 ]}
               >
-                🧘 선 조약돌탑
+                ⛰️ 선 조약돌탑
               </Text>
             </Pressable>
             <Pressable
@@ -637,13 +641,13 @@ export function StoneTowerCanvas({
                       SHAPE_BASE_PROFILES[node.geometry.shape] ??
                       SHAPE_BASE_PROFILES.round;
 
-                    // 한 층에 돌이 2~3개 있을 때 폭/높이 비례 조정
+                    // 한 층에 돌이 2~3개 있을 때 폭/높이 비례 조정 (자연스러운 탑형 피라미드 비례)
                     const scaleFactor =
                       tier.stones.length === 1
-                        ? 1.0
+                        ? 0.92
                         : tier.stones.length === 2
-                        ? 0.78
-                        : 0.64;
+                        ? 0.62
+                        : 0.48;
 
                     const widthJitter = 0.9 + (hash % 20) / 100;
                     const heightJitter = 0.9 + ((hash >> 2) % 20) / 100;
@@ -656,27 +660,27 @@ export function StoneTowerCanvas({
                     );
 
                     // ⭐️ [알약/캡슐 방지 핵심] 상하 비대칭 자연석 곡률
-                    // 상단 모서리는 산 능선처럼 완만하고 큰 아치(40~58px)
-                    // 하단 모서리는 바닥 평면(16~22px)
-                    let rTL = rawProfile.rTL + (hash % 10 - 5);
-                    let rTR = rawProfile.rTR + ((hash >> 2) % 10 - 5);
-                    let rBR = rawProfile.rBR + ((hash >> 4) % 6 - 3);
-                    let rBL = rawProfile.rBL + ((hash >> 6) % 6 - 3);
+                    // 상단 모서리는 산 능선처럼 완만하고 큰 아치(20~30px)
+                    // 하단 모서리는 바닥 평면(10~16px)
+                    let rTL = rawProfile.rTL + (hash % 6 - 3);
+                    let rTR = rawProfile.rTR + ((hash >> 2) % 6 - 3);
+                    let rBR = rawProfile.rBR + ((hash >> 4) % 4 - 2);
+                    let rBL = rawProfile.rBL + ((hash >> 6) % 4 - 2);
 
                     // 기초단에 2개의 돌이 나란히 놓일 때: 자연스러운 계곡(Saddle) 형성
                     if (isBaseTier && tier.stones.length === 2) {
                       if (sIdx === 0) {
                         // 좌측 돌: 왼쪽이 높고 오른쪽이 완만하게 내려감
-                        rTL = 54;
-                        rTR = 24;
-                        rBR = 16;
-                        rBL = 22;
+                        rTL = 32;
+                        rTR = 18;
+                        rBR = 10;
+                        rBL = 14;
                       } else {
                         // 우측 돌: 오른쪽이 높고 왼쪽이 완만하게 내려감
-                        rTL = 24;
-                        rTR = 54;
-                        rBR = 22;
-                        rBL = 16;
+                        rTL = 18;
+                        rTR = 32;
+                        rBR = 14;
+                        rBL = 10;
                       }
                     }
 
@@ -787,7 +791,7 @@ export function StoneTowerCanvas({
             <View
               style={[
                 styles.groundShadow,
-                { width: tiers[0]?.stones.length > 1 ? 260 : 190 },
+                { width: tiers[0]?.stones.length > 1 ? 210 : 150 },
               ]}
             />
           </View>
@@ -907,9 +911,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
+    gap: 6, // 자연스러운 접촉 간격 (돌끼리 겹침 및 파고듦 방지)
   },
   tierOverlap: {
-    marginTop: -12, // 층과 층 사이가 물리적으로 포개어지도록 음수 마진
+    marginBottom: -2, // 상단 층이 아래 층에 자연스럽게 접촉 (과도한 관통 방지)
   },
   stoneWrapper: {
     alignItems: 'center',
@@ -917,7 +922,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   horizontalNestle: {
-    marginHorizontal: -6, // 한 층의 두 돌이 자연스럽게 맞닿도록 음수 마진
+    marginHorizontal: 0, // 음수 마진 제거하여 돌끼리 겹치지 않음
   },
   stonePebble: {
     alignItems: 'center',
