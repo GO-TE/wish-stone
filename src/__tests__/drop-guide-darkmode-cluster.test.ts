@@ -287,3 +287,55 @@ test('Feature 5.4: place.tsx status captions remove obsolete target reference', 
     'place.tsx must use updated 3D placement prompt'
   );
 });
+
+// =============================================================================
+// Feature 6: Authentication Session Persistence & Auto Guest Recovery
+// =============================================================================
+test('Feature 6.1: MsaHttpClient persists and restores token via localStorage', () => {
+  const httpSource = fs.readFileSync(
+    path.resolve(projectRoot, 'infrastructure/api/MsaHttpClient.ts'),
+    'utf8'
+  );
+
+  assert.ok(
+    httpSource.includes('localStorage.getItem(\'stonewish_access_token\')'),
+    'MsaHttpClient must restore token from localStorage on initialization'
+  );
+  assert.ok(
+    httpSource.includes('localStorage.setItem(\'stonewish_access_token\', token)'),
+    'MsaHttpClient must persist token to localStorage when set'
+  );
+});
+
+test('Feature 6.2: MsaAuthService persists session profile and provides ensureSession', () => {
+  const authSource = fs.readFileSync(
+    path.resolve(projectRoot, 'infrastructure/auth/MsaAuthService.ts'),
+    'utf8'
+  );
+
+  assert.ok(
+    authSource.includes('localStorage.getItem(\'stonewish_auth_profile\')'),
+    'MsaAuthService must restore profile from localStorage on initialization'
+  );
+  assert.ok(
+    authSource.includes('localStorage.setItem(\n          \'stonewish_auth_profile\'') ||
+    authSource.includes('localStorage.setItem(\'stonewish_auth_profile\''),
+    'MsaAuthService must persist profile to localStorage'
+  );
+});
+
+test('Feature 6.3: place.tsx guarantees authenticated session on mount and auto-recovers on 401', () => {
+  const placeSource = fs.readFileSync(
+    path.resolve(projectRoot, 'app/stack/place.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    placeSource.includes('container.auth.signIn(\'guest\')'),
+    'place.tsx must auto-authenticate guest session if unauthenticated'
+  );
+  assert.ok(
+    placeSource.includes('err?.status === 401') && placeSource.includes('retryRes'),
+    'place.tsx must handle 401 with transparent guest session auto-recovery and retry'
+  );
+});
