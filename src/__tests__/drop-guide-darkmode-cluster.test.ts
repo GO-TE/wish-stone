@@ -298,11 +298,11 @@ test('Feature 6.1: MsaHttpClient persists and restores token via localStorage', 
   );
 
   assert.ok(
-    httpSource.includes('localStorage.getItem(\'stonewish_access_token\')'),
+    httpSource.includes('localStorage.getItem(\'wishstone_access_token\')'),
     'MsaHttpClient must restore token from localStorage on initialization'
   );
   assert.ok(
-    httpSource.includes('localStorage.setItem(\'stonewish_access_token\', token)'),
+    httpSource.includes('localStorage.setItem(\'wishstone_access_token\', token)'),
     'MsaHttpClient must persist token to localStorage when set'
   );
 });
@@ -314,12 +314,12 @@ test('Feature 6.2: MsaAuthService persists session profile and provides ensureSe
   );
 
   assert.ok(
-    authSource.includes('localStorage.getItem(\'stonewish_auth_profile\')'),
+    authSource.includes('localStorage.getItem(\'wishstone_auth_profile\')'),
     'MsaAuthService must restore profile from localStorage on initialization'
   );
   assert.ok(
-    authSource.includes('localStorage.setItem(\n          \'stonewish_auth_profile\'') ||
-    authSource.includes('localStorage.setItem(\'stonewish_auth_profile\''),
+    authSource.includes('localStorage.setItem(\n          \'wishstone_auth_profile\'') ||
+    authSource.includes('localStorage.setItem(\'wishstone_auth_profile\''),
     'MsaAuthService must persist profile to localStorage'
   );
 });

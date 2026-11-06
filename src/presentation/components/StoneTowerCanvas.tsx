@@ -712,10 +712,8 @@ export function InteractiveDraggableStone3D({
         const beamCenterY = projectedLandingY + beamHeight * 0.5;
 
         const landingAuraColor = !isOverTowerSupport
-          ? '#FA5252' // Outside tower -> ground fall warning (Red)
-          : balanceRating === 'stable'
-          ? '#3182F6' // Stable sweet spot (Toss Blue)
-          : '#FF9500'; // Off-center (Amber)
+          ? '#5C7CFA' // Peaceful soft blue for ground
+          : '#3182F6'; // Toss Blue for tower
 
         return (
           <group>

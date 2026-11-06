@@ -8,7 +8,7 @@ val springCloudVersion = "2023.0.3"
 extra["springCloudVersion"] = springCloudVersion
 
 allprojects {
-    group = "com.stonewish"
+    group = "com.wishstone"
     version = "0.1.0-SNAPSHOT"
 
     repositories {

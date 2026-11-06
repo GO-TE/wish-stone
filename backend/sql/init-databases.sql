@@ -1,5 +1,5 @@
 -- =============================================================================
--- StoneWish MSA Database-per-Service 초기화 스크립트 (MySQL 8.0)
+-- Wish Stone MSA Database-per-Service 초기화 스크립트 (MySQL 8.0)
 -- 근거: dash_board/데이터 모델.md (user_db / wish_db / interaction_db / group_db 분리)
 -- =============================================================================
 
