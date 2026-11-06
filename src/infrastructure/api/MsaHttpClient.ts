@@ -42,10 +42,32 @@ export class MsaHttpClient {
       const fn = fetchFn || (globalThis.fetch as unknown as FetchLike);
       return fn.call(globalThis, input, init);
     };
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('stonewish_access_token');
+        if (saved) {
+          this.accessToken = saved;
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    }
   }
 
   setAccessToken(token: string | null): void {
     this.accessToken = token;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        if (token) {
+          localStorage.setItem('stonewish_access_token', token);
+        } else {
+          localStorage.removeItem('stonewish_access_token');
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    }
   }
 
   getAccessToken(): string | null {

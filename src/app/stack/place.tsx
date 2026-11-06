@@ -78,6 +78,14 @@ export default function PlaceStone3DScreen() {
     };
   }, []);
 
+  // Ensure authenticated session exists so placing never fails with 401 on refresh
+  useEffect(() => {
+    const container = getSharedAppContainer();
+    if (!container.http.getAccessToken() && !container.auth.currentUser()) {
+      container.auth.signIn('guest').catch(() => {});
+    }
+  }, []);
+
   // Subscribe to controller state changes (clears trajectory when reset)
   useEffect(() => {
     return controller.subscribe((next) => {
@@ -145,6 +153,10 @@ export default function PlaceStone3DScreen() {
     setIsConfirmingFallen(true);
 
     try {
+      const container = getSharedAppContainer();
+      if (!container.http.getAccessToken()) {
+        await container.auth.signIn('guest');
+      }
       await controller.confirmFallenPlacement(fallenPose);
       safeHaptic('success');
       setPhase('SETTLED');
@@ -152,8 +164,22 @@ export default function PlaceStone3DScreen() {
       setTimeout(() => {
         router.replace('/home');
       }, 1200);
-    } catch {
-      setStatusMessage('일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+    } catch (err: any) {
+      if (err?.status === 401 || err?.code === 'UNAUTHORIZED') {
+        try {
+          const container = getSharedAppContainer();
+          await container.auth.signIn('guest');
+          await controller.confirmFallenPlacement(fallenPose);
+          safeHaptic('success');
+          setPhase('SETTLED');
+          setStatusMessage('✨ 떨어진 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
+          setTimeout(() => {
+            router.replace('/home');
+          }, 1200);
+          return;
+        } catch {}
+      }
+      setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
       setIsConfirmingFallen(false);
     }
   };
@@ -194,6 +220,10 @@ export default function PlaceStone3DScreen() {
     setRenderedDroppedStone(initialDroppedStone);
 
     try {
+      const container = getSharedAppContainer();
+      if (!container.http.getAccessToken()) {
+        await container.auth.signIn('guest');
+      }
       const res = await controller.placeStone(activeTower, dropPose);
       setState({ ...controller.getState() });
 
@@ -240,13 +270,41 @@ export default function PlaceStone3DScreen() {
       setTimeout(() => {
         router.replace('/home');
       }, 1200);
-    } catch {
+    } catch (err: any) {
+      if (err?.status === 401 || err?.code === 'UNAUTHORIZED' || err?.message?.includes('UNAUTHORIZED')) {
+        try {
+          const container = getSharedAppContainer();
+          await container.auth.signIn('guest');
+          const retryRes = await controller.placeStone(activeTower, dropPose);
+          setState({ ...controller.getState() });
+          if (retryRes.status === 'saved') {
+            setPhase('SETTLED');
+            safeHaptic('success');
+            setRenderedDroppedStone(state.selectedStone.withPose(retryRes.pose));
+            setStatusMessage(
+              retryRes.autoPlaced
+                ? '✨ 3회 시도로 돌탑 꼭대기에 자동 안착되었습니다!'
+                : '🎉 돌탑 위에 무사히 안착했습니다!'
+            );
+            setTimeout(() => {
+              router.replace('/home');
+            }, 1200);
+            return;
+          }
+        } catch (retryErr: any) {
+          err = retryErr;
+        }
+      }
       controller.resetPlacement();
       setPhase('IDLE');
       setRenderedDroppedStone(null);
       setCurrentTrajectory(undefined);
       setFallenPose(null);
-      setStatusMessage('일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+      if (err?.message?.includes('DAILY_QUOTA_EXCEEDED') || err?.code === 'DAILY_QUOTA_EXCEEDED') {
+        setStatusMessage('오늘의 소원 돌 쌓기 쿼터(5개)를 모두 소진했습니다.');
+      } else {
+        setStatusMessage(err?.message ? `오류가 발생했습니다: ${err.message}` : '일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
+      }
     }
   };
 
