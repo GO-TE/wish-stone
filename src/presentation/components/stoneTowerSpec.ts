@@ -149,6 +149,57 @@ export function buildStoneGeometrySpec(
 /**
  * 거친 돌 표면 질감의 매트 셰이더 재질과 응원 단계별(`0~3단계`) 은은한 발광(emissive) 스펙을 계산한다 (D-006, D-017).
  */
+
+function parseHexColor(hex: string): { r: number; g: number; b: number } {
+  let clean = hex.replace('#', '');
+  if (clean.length === 3) {
+    clean = clean.split('').map((c) => c + c).join('');
+  }
+  const num = parseInt(clean, 16);
+  if (Number.isNaN(num)) return { r: 128, g: 128, b: 128 };
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+
+export function adjustColorForDarkBackground(hexColor: string): {
+  readonly adjustedColor: string;
+  readonly isDarkStone: boolean;
+  readonly rimGlowColor: string;
+  readonly rimGlowIntensity: number;
+} {
+  const { r, g, b } = parseHexColor(hexColor);
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  const isDarkStone = luminance < 75;
+
+  if (!isDarkStone) {
+    return {
+      adjustedColor: hexColor,
+      isDarkStone: false,
+      rimGlowColor: '#000000',
+      rimGlowIntensity: 0.0,
+    };
+  }
+
+  // Lift luminance by 25% so dark stones contrast distinctly against dark background
+  const liftFactor = 1.35;
+  const minFloor = 38;
+  const newR = Math.min(255, Math.round(Math.max(minFloor, r * liftFactor)));
+  const newG = Math.min(255, Math.round(Math.max(minFloor, g * liftFactor)));
+  const newB = Math.min(255, Math.round(Math.max(minFloor, b * liftFactor)));
+  const toHex = (n: number) => n.toString(16).padStart(2, '0');
+  const adjustedColor = '#' + toHex(newR) + toHex(newG) + toHex(newB);
+
+  return {
+    adjustedColor,
+    isDarkStone: true,
+    rimGlowColor: '#3A485E', // Subtle cool slate rim glow
+    rimGlowIntensity: 0.22,
+  };
+}
+
 export function buildStoneMaterialSpec(
   color: string,
   shape: StoneShape,
@@ -157,10 +208,12 @@ export function buildStoneMaterialSpec(
 ): StoneMaterialShaderSpec {
   const geo = buildStoneGeometrySpec(shape);
   const glow = GLOW_BY_CHEER_LEVEL[cheerLevel] ?? GLOW_BY_CHEER_LEVEL[0];
+  const darkAdjust = adjustColorForDarkBackground(color);
+  
   return {
     baseColor: color,
-    roughness: geo.roughness,
-    metalness: geo.metalness,
+    roughness: darkAdjust.isDarkStone ? 0.68 : geo.roughness,
+    metalness: darkAdjust.isDarkStone ? 0.12 : geo.metalness,
     emissiveColor: glow.emissiveColor,
     emissiveIntensity: glow.emissiveIntensity,
     outlineHighlighted: isMine,

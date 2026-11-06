@@ -62,7 +62,7 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
       gravity: new CANNON.Vec3(0, -9.82, 0),
     });
     const gsSolver = this.world.solver as CANNON.GSSolver;
-    gsSolver.iterations = 25;
+    gsSolver.iterations = 30;
     gsSolver.tolerance = 1e-4;
     this.world.allowSleep = true;
 
@@ -385,6 +385,18 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
           {
             x: adjustedDropPose.position.x,
             y: Number(minAllowedCenterY.toFixed(4)),
+            z: adjustedDropPose.position.z,
+          },
+          adjustedDropPose.rotation
+        );
+      }
+    } else if (!settled) {
+      const groundRestY = dropConfig.halfExtents.y;
+      if (adjustedDropPose.position.y < groundRestY) {
+        adjustedDropPose = new Pose(
+          {
+            x: adjustedDropPose.position.x,
+            y: Number(groundRestY.toFixed(4)),
             z: adjustedDropPose.position.z,
           },
           adjustedDropPose.rotation
