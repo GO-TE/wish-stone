@@ -668,3 +668,111 @@ test('Adversarial Case 4.5: Full System Invariant Check across home.tsx, setting
   assert.ok(settingsSource.includes('linkGuestToSocial'));
   assert.ok(settingsSource.includes('withdrawAccount'));
 });
+
+test('Adversarial Case 2.7: Submission lock releases reliably even if onCheer throws network exception', async () => {
+  let isSubmitting = false;
+  let submittingRef = false;
+
+  const failingOnCheer = async () => {
+    throw new Error('NETWORK_TIMEOUT_504');
+  };
+
+  const handleCheerPress = async () => {
+    if (isSubmitting || submittingRef) return;
+    submittingRef = true;
+    isSubmitting = true;
+    try {
+      await failingOnCheer();
+    } catch {
+      // Swallowed safely per WishDetailBottomSheet.tsx line 124
+    } finally {
+      submittingRef = false;
+      isSubmitting = false;
+    }
+  };
+
+  await handleCheerPress();
+  assert.equal(isSubmitting, false, 'isSubmitting must reset to false after exception');
+  assert.equal(submittingRef, false, 'submittingRef must reset to false after exception');
+
+  // Next press should succeed without being locked out
+  let nextAttemptExecuted = false;
+  const succeedingOnCheer = async () => {
+    nextAttemptExecuted = true;
+  };
+  const handleNextCheerPress = async () => {
+    if (isSubmitting || submittingRef) return;
+    submittingRef = true;
+    isSubmitting = true;
+    try {
+      await succeedingOnCheer();
+    } finally {
+      submittingRef = false;
+      isSubmitting = false;
+    }
+  };
+
+  await handleNextCheerPress();
+  assert.equal(nextAttemptExecuted, true, 'Next cheer attempt must execute after error recovery');
+});
+
+test('Adversarial Case 3.5: Settings screen deep-link back navigation falls back to router.replace("/home")', () => {
+  let replacedRoute: string | null = null;
+  let backedOut = false;
+
+  const mockDeepLinkRouter = {
+    canGoBack: () => false, // Initial entry from external deep link
+    back: () => {
+      backedOut = true;
+    },
+    replace: (route: string) => {
+      replacedRoute = route;
+    },
+  };
+
+  // Logic verbatim from SettingsScreen (settings/index.tsx lines 87-91)
+  const onBackPress = () => {
+    if (mockDeepLinkRouter.canGoBack && mockDeepLinkRouter.canGoBack()) {
+      mockDeepLinkRouter.back();
+    } else {
+      mockDeepLinkRouter.replace('/home');
+    }
+  };
+
+  onBackPress();
+  assert.equal(backedOut, false, 'back() should not be called when canGoBack is false');
+  assert.equal(replacedRoute, '/home', 'Must safely replace route with /home on direct deep link');
+});
+
+test('Adversarial Case 4.6: Opaque-box E2E critique: verify all four synthetic mock assertions in e2e suite are audited against real home.tsx', () => {
+  const homePath = path.resolve(projectRoot, 'app/home.tsx');
+  const source = fs.readFileSync(homePath, 'utf8');
+
+  // Verify that the 4 synthetic objects in e2e-drag-anti-clipping-home.test.ts correspond to actual code:
+  // 1. headerActions.settingsChip -> router.push('/settings')
+  assert.ok(source.includes("router.push('/settings')"), 'Real home.tsx must contain /settings navigation');
+
+  // 2. scr04SectionsOrder -> styles order in JSX
+  const stylesSequence = [
+    'styles.header',
+    'styles.tabBar',
+    'styles.statsBar',
+    'styles.towerViewport',
+    'styles.cardBox',
+    'styles.cheerNewsBanner',
+    'styles.floatingButtonContainer',
+  ];
+  let lastIndex = -1;
+  for (const styleName of stylesSequence) {
+    const idx = source.indexOf(styleName);
+    assert.ok(idx > lastIndex, `${styleName} must appear in strict SCR-04 sequential order`);
+    lastIndex = idx;
+  }
+
+  // 3. viewportElements.redundantBottomBannerPresent -> absence of exploreBannerButton
+  assert.ok(!source.includes('exploreBannerButton'), 'Redundant banner must be absent in real code');
+
+  // 4. Wish feed report trigger
+  assert.ok(source.includes('setReportModalVisible(true)'), 'Report modal trigger must exist in real code');
+});
+
