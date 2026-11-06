@@ -127,7 +127,9 @@ export default function ExploreWishesScreen() {
               />
               <View style={styles.glowPill}>
                 <Text style={styles.glowBadge}>
-                  🔥 응원 {activeWish.cheerCount}회 · 빛 레벨 {activeWish.cheerLevel().level}
+                  {activeWish.visibleCheerCount !== null
+                    ? `🔥 응원 ${activeWish.visibleCheerCount}회 · `
+                    : '✨ '}빛 레벨 {activeWish.cheerLevel().level}
                 </Text>
               </View>
             </View>
