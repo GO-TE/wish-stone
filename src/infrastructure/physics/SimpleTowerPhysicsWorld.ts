@@ -162,13 +162,15 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
       entry.body.torque.set(0, 0, 0);
     }
 
-    // 2. 현재 돌탑의 최상단 돌 식별
+    // 2. 현재 돌탑의 최상단 돌 식별 (물리 표면 기준)
     let topStone: Stone | null = null;
-    let maxStoneY = -Infinity;
+    let maxTopSurfaceY = -Infinity;
 
     for (const s of this.staticStones) {
-      if (s.pose.position.y > maxStoneY) {
-        maxStoneY = s.pose.position.y;
+      const sCfg = StonePhysicsBodyFactory.getShapeConfig(s.shape);
+      const surfaceY = s.pose.position.y + sCfg.halfExtents.y;
+      if (surfaceY > maxTopSurfaceY) {
+        maxTopSurfaceY = surfaceY;
         topStone = s;
       }
     }
@@ -356,10 +358,11 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
       settled = false;
     } else {
       // 돌탑 위에 안착했는지 여부 검증:
-      // (1) 최종 높이가 탑 상단 표면 위인가
+      // (1) 최종 바닥 좌표가 탑 상단 표면 위인가 (y - dropConfig.halfExtents.y >= topSurfaceY - 0.02)
       // (2) 최종 무게중심이 베이스 돌의 지지 다각형 내에 유지되는가
       // (3) 지면으로 굴러떨어지지 않았는가 (y > 지면 반높이 + 마진)
-      const isAboveTopSurface = finalDropPose.position.y >= topSurfaceY - 0.05;
+      const dropBottomFinal = finalDropPose.position.y - dropConfig.halfExtents.y;
+      const isAboveTopSurface = dropBottomFinal >= topSurfaceY - 0.02;
       const finalEval = supportPolygon
         ? StabilityEvaluator.evaluateStability(
             finalDropPose.position,
@@ -371,6 +374,22 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
       const notOnGround = finalDropPose.position.y > dropConfig.halfExtents.y + 0.08;
 
       settled = isAboveTopSurface && notOnGround && finalEval.marginDistance >= -0.03;
+    }
+
+    let adjustedDropPose = finalDropPose;
+    if (settled && topStone) {
+      const minAllowedCenterY = topSurfaceY + dropConfig.halfExtents.y;
+      if (adjustedDropPose.position.y < minAllowedCenterY) {
+        // Micro-clamp any numerical spring compression (< 2mm) to guarantee y >= topSurfaceY + h_drop
+        adjustedDropPose = new Pose(
+          {
+            x: adjustedDropPose.position.x,
+            y: Number(minAllowedCenterY.toFixed(4)),
+            z: adjustedDropPose.position.z,
+          },
+          adjustedDropPose.rotation
+        );
+      }
     }
 
     const collapsed = !settled;
@@ -407,7 +426,7 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
 
     return {
       settled,
-      pose: finalDropPose,
+      pose: adjustedDropPose,
       collapsed,
       affectedStones,
       trajectory,

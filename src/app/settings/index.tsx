@@ -80,7 +80,17 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable
+          accessibilityLabel="홈으로 돌아가기"
+          accessibilityRole="button"
+          onPress={() => {
+            if (router.canGoBack && router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/home');
+            }
+          }}
+        >
           <Text style={styles.backBtn}>◂ 홈</Text>
         </Pressable>
         <Text style={styles.title}>설정 및 계정 관리</Text>

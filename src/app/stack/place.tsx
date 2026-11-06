@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +12,12 @@ import { type SimulationFrame } from '../../domain/ports/PhysicsWorld.ts';
 import { Pose } from '../../domain/value-objects/Pose.ts';
 import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { StonePhysicsBodyFactory } from '../../infrastructure/physics/StonePhysicsBodyFactory.ts';
 import { StoneTowerCanvas } from '../../presentation/components/StoneTowerCanvas.tsx';
+import {
+  calculate3DDropPoseFromWorldPosition,
+  type DragWorldPositionResult,
+} from '../../presentation/components/stoneDragSpec.ts';
 import { type CameraPresetType } from '../../presentation/components/cameraPresetSpec.ts';
 import {
   type StackPlacementPhase,
@@ -84,7 +87,7 @@ export default function PlaceStone3DScreen() {
     });
   }, [controller]);
 
-  // Default sample tower fallback - no overlap in 3D (base-1 at -0.34, base-2 at +0.34, base-3 on top at 0.48)
+  // Default sample tower fallback - no overlap in 3D (base-1 at y=0.2625, base-2 at y=0.105, base-3 on top at y=0.730)
   const [activeTower, setActiveTower] = useState<Tower>(() => {
     return new Tower(
       controller.getState().scope ?? TowerKey.global(),
@@ -94,7 +97,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'boulder',
             color: '#3E4947',
-            pose: new Pose({ x: -0.34, y: 0, z: 0 }),
+            pose: new Pose({ x: -0.34, y: 0.2625, z: 0 }),
           }),
           status: 'active',
           bloom: null,
@@ -107,7 +110,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'flat',
             color: '#262930',
-            pose: new Pose({ x: 0.34, y: 0, z: 0 }),
+            pose: new Pose({ x: 0.34, y: 0.105, z: 0 }),
           }),
           status: 'active',
           bloom: null,
@@ -120,7 +123,7 @@ export default function PlaceStone3DScreen() {
           stone: new Stone({
             shape: 'round',
             color: '#6E675F',
-            pose: new Pose({ x: 0, y: 0.48, z: 0 }),
+            pose: new Pose({ x: 0, y: 0.730, z: 0 }),
           }),
           status: 'active',
           bloom: 'sprout',
@@ -147,14 +150,14 @@ export default function PlaceStone3DScreen() {
       .catch(() => {});
   }, [controller]);
 
-  const pan = useRef(new Animated.ValueXY()).current;
-
-  const calculate3DDropPose = (dx: number, dy: number): Pose => {
-    const clampedX = Math.min(1.5, Math.max(-1.5, Number((dx / 300).toFixed(4))));
-    const topY = activeTower.topY();
-    const heightBonus = Math.min(0.2, Math.max(0, (-dy - 70) * 0.0008));
-    const dropY = Number((topY + 0.25 + heightBonus).toFixed(4));
-    return new Pose({ x: clampedX, y: dropY, z: 0 });
+  const getAutoPlacementDropPose = (lateralOffset = 0): Pose => {
+    const topSurfaceY = activeTower.topSurfaceY ? activeTower.topSurfaceY() : activeTower.topY();
+    const dropConfig = StonePhysicsBodyFactory.getShapeConfig(state.selectedStone.shape);
+    return calculate3DDropPoseFromWorldPosition(
+      [lateralOffset, topSurfaceY + dropConfig.halfExtents.y + 0.35, 0],
+      topSurfaceY,
+      dropConfig.halfExtents.y
+    );
   };
 
   /**
@@ -211,10 +214,6 @@ export default function PlaceStone3DScreen() {
     setIsNearTarget(false);
     setIsOffCenter(false);
     setStatusMessage('돌을 타겟 원(🎯)으로 끌어올려 균형을 맞춰보세요');
-    Animated.spring(pan, {
-      toValue: { x: 0, y: 0 },
-      useNativeDriver: false,
-    }).start();
   };
 
   const handleDrop = async (dropPose: Pose) => {
@@ -288,51 +287,9 @@ export default function PlaceStone3DScreen() {
       setCurrentTrajectory(undefined);
       setFallenPose(null);
       setStatusMessage('일일 소원 쿼터를 모두 소진했거나 오류가 발생했습니다.');
-      Animated.spring(pan, {
-        toValue: { x: 0, y: 0 },
-        useNativeDriver: false,
-      }).start();
     }
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => phase === 'IDLE',
-      onMoveShouldSetPanResponder: () => phase === 'IDLE' || phase === 'PLACING',
-      onPanResponderGrant: () => {
-        if (phase !== 'IDLE') return;
-        setPhase('PLACING');
-        controller.startPlacing();
-        safeHaptic('grab');
-        setStatusMessage('돌을 쥐었습니다. 위쪽 목표 지점(🎯)으로 끌어올리세요!');
-      },
-      onPanResponderMove: (_, gestureState) => {
-        pan.setValue({ x: gestureState.dx, y: gestureState.dy });
-        const near = gestureState.dy < -60;
-        const off = Math.abs(gestureState.dx) > 50;
-        setIsNearTarget(near);
-        setIsOffCenter(off);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy < -70) {
-          const dropPose = calculate3DDropPose(gestureState.dx, gestureState.dy);
-          handleDrop(dropPose);
-        } else {
-          setPhase('IDLE');
-          setIsNearTarget(false);
-          setIsOffCenter(false);
-          setStatusMessage('위쪽 목표 지점(🎯)까지 더 높이 끌어올려 놓아보세요!');
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  const stoneColor = state.selectedStone?.color || '#5A6577';
-  const isInteracting = phase === 'PLACING';
   const isBusy =
     phase === 'BALANCING' ||
     phase === 'COLLAPSING' ||
@@ -465,9 +422,38 @@ export default function PlaceStone3DScreen() {
           </Text>
         </View>
 
-        {/* Stone Tower Canvas */}
+        {/* Stone Tower Canvas with 3D Direct Drag Interaction */}
         <StoneTowerCanvas
           stones={activeTower.stones}
+          activeStone={state.selectedStone}
+          isDraggable={!isBusy}
+          onStoneDragStart={() => {
+            if (phase !== 'IDLE') return;
+            setPhase('PLACING');
+            controller.startPlacing();
+            safeHaptic('grab');
+            setStatusMessage('3D 소원 돌을 잡았습니다. 돌탑 꼭대기(🎯)로 끌어올리세요!');
+          }}
+          onStoneDragMove={(result: DragWorldPositionResult) => {
+            setIsNearTarget(result.isOverDropZone);
+            setIsOffCenter(result.balanceRating !== 'stable');
+            if (result.balanceRating === 'critical') {
+              setStatusMessage('⚠️ 중심에서 벗어남 (전복 위험! 가운데로 맞춰주세요)');
+            } else if (result.isOverDropZone) {
+              setStatusMessage('✨ 안정적인 균형 위치 (손을 놓으면 탑 위에 안착합니다)');
+            } else {
+              setStatusMessage('돌탑 꼭대기(🎯)를 향해 위로 끌어올려 보세요');
+            }
+          }}
+          onStoneDrop={(dropPose) => {
+            handleDrop(dropPose);
+          }}
+          onStoneDragCancel={() => {
+            setPhase('IDLE');
+            setIsNearTarget(false);
+            setIsOffCenter(false);
+            setStatusMessage('돌탑 꼭대기(🎯)까지 더 높이 끌어올려 놓아보세요!');
+          }}
           collapsedShake={phase === 'COLLAPSING'}
           trajectory={currentTrajectory ?? state.lastSimulationTrajectory}
           phase={phase}
@@ -476,35 +462,10 @@ export default function PlaceStone3DScreen() {
           enableOrbitControls
           cameraPreset={cameraPreset}
           onCameraPresetChange={setCameraPreset}
-          towerTopY={activeTower.topY()}
+          towerTopY={activeTower.topSurfaceY ? activeTower.topSurfaceY() : activeTower.topY()}
           onCollapseAnimationComplete={() => handleCollapseComplete()}
           onPlaybackComplete={() => handleCollapseComplete()}
         />
-
-        {/* Draggable User Stone */}
-        <View style={styles.dragTrackArea}>
-          <Animated.View
-            {...(isBusy ? {} : panResponder.panHandlers)}
-            style={[
-              styles.draggableStone,
-              {
-                backgroundColor: stoneColor,
-                opacity: isBusy ? 0 : 1,
-                transform: [{ translateX: pan.x }, { translateY: pan.y }],
-                borderColor: isInteracting
-                  ? TossTheme.colors.primary
-                  : 'rgba(255, 255, 255, 0.4)',
-                cursor: isInteracting ? ('grabbing' as any) : ('grab' as any),
-              },
-            ]}
-          >
-            <View style={styles.stoneSurfaceHighlight} />
-            <Text style={styles.stoneBadge}>내 소원 돌</Text>
-            <Text style={styles.stoneActionText}>
-              {isInteracting ? '놓으면 투하!' : '손으로 위로 끌어올리기'}
-            </Text>
-          </Animated.View>
-        </View>
 
         <Text style={styles.canvasCaption}>
           시도 {Math.min(state.attempt + 1, 3)}/3회 · 일일 쿼터 잔여 {state.quota.remaining}개
@@ -548,15 +509,7 @@ export default function PlaceStone3DScreen() {
               pressed && !isBusy && { opacity: 0.7 },
             ]}
             disabled={isBusy}
-            onPress={() =>
-              handleDrop(
-                new Pose({
-                  x: 0.45,
-                  y: Number((activeTower.topY() + 0.3).toFixed(4)),
-                  z: 0,
-                })
-              )
-            }
+            onPress={() => handleDrop(getAutoPlacementDropPose(0.45))}
           >
             <Text style={styles.secondaryText}>빗맞힘 테스트 (전복)</Text>
           </Pressable>
@@ -567,15 +520,7 @@ export default function PlaceStone3DScreen() {
               pressed && !isBusy && { opacity: 0.9 },
             ]}
             disabled={isBusy}
-            onPress={() =>
-              handleDrop(
-                new Pose({
-                  x: 0,
-                  y: Number((activeTower.topY() + 0.25).toFixed(4)),
-                  z: 0,
-                })
-              )
-            }
+            onPress={() => handleDrop(getAutoPlacementDropPose(0))}
           >
             <Text style={styles.primaryText}>🎯 즉시 안착하기</Text>
           </Pressable>
@@ -818,56 +763,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-  },
-  dragTrackArea: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 90,
-  },
-  draggableStone: {
-    width: 130,
-    height: 52,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 24,
-    borderBottomRightRadius: 14,
-    borderBottomLeftRadius: 16,
-    borderWidth: 2,
-    borderTopWidth: 3,
-    borderTopColor: 'rgba(255, 255, 255, 0.45)',
-    borderBottomWidth: 4,
-    borderBottomColor: 'rgba(0, 0, 0, 0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
-    userSelect: 'none' as any,
-  },
-  stoneSurfaceHighlight: {
-    position: 'absolute',
-    top: 4,
-    left: 10,
-    right: 10,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  stoneBadge: {
-    color: '#D1D5DB',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  stoneActionText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
   },
   canvasCaption: {
     ...TossTheme.typography.micro,

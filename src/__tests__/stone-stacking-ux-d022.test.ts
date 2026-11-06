@@ -9,8 +9,43 @@ import { TowerKey } from '../domain/value-objects/TowerKey.ts';
 import { StackStoneController } from '../presentation/controllers/StackStoneController.ts';
 
 test('D-022 & Stone Overlap: 굴러떨어진 돌 확정 안착(이 자리에 그대로 두기) 및 재시도(다시 올려보기) 라이프사이클 검증', async () => {
-  const container = createMsaAppContainer();
-  await container.auth.signIn('guest');
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+    if (url.includes('/api/v1/auth/login')) {
+      return new Response(
+        JSON.stringify({
+          accessToken: 'mock-token-guest',
+          user: { id: 'mock-user-1', nickname: null, isGuest: true },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (url.includes('/api/v1/wishes') && method === 'POST') {
+      return new Response(
+        JSON.stringify({
+          id: 'wish-d022-saved',
+          content: '언제나 평온하고 건강하기를 바랍니다',
+          category: 'health',
+          scope: 'global',
+          stone: {
+            shape: 'round',
+            color: '#808080',
+            pose: { position: { x: 0.58, y: 0.05, z: 0 }, rotation: { qx: 0, qy: 0, qz: 0, qw: 1 } },
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof globalThis.fetch;
+
+  try {
+    const container = createMsaAppContainer();
+    await container.auth.signIn('guest');
   const controller = new StackStoneController(container, {
     baseQuota: 5,
     bonusQuota: 0,
@@ -80,6 +115,9 @@ test('D-022 & Stone Overlap: 굴러떨어진 돌 확정 안착(이 자리에 그
   assert.equal(controller.getState().attempt, 0); // 확정 후 리셋
   assert.equal(controller.getState().quota.remaining, 1); // 1 차감됨
   assert.ok(controller.getState().savedWishId !== null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('D-022 & Stone Overlap: 2D 및 3D 기하 비간섭 무결성 불변식 검증', () => {
