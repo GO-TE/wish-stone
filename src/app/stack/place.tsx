@@ -15,6 +15,7 @@ import { Pose } from '../../domain/value-objects/Pose.ts';
 import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 import { StoneTowerCanvas } from '../../presentation/components/StoneTowerCanvas.tsx';
+import { type CameraPresetType } from '../../presentation/components/cameraPresetSpec.ts';
 import {
   type StackPlacementPhase,
   type StackStoneViewState,
@@ -49,6 +50,7 @@ export default function PlaceStone3DScreen() {
   });
   const [state, setState] = useState<StackStoneViewState>(() => controller.getState());
   const [phase, setPhase] = useState<StackPlacementPhase>('IDLE');
+  const [cameraPreset, setCameraPreset] = useState<CameraPresetType>('front');
   const [currentTrajectory, setCurrentTrajectory] = useState<
     readonly SimulationFrame[] | undefined
   >(undefined);
@@ -370,6 +372,74 @@ export default function PlaceStone3DScreen() {
 
       {/* Main Drag & Drop Zone */}
       <View style={styles.canvasContainer}>
+        {/* Camera Preset Selector HUD */}
+        <View style={styles.cameraPresetRow}>
+          <Pressable
+            style={[
+              styles.cameraPresetChip,
+              cameraPreset === 'front' && styles.cameraPresetChipActive,
+            ]}
+            onPress={() => setCameraPreset('front')}
+          >
+            <Text
+              style={[
+                styles.cameraPresetText,
+                cameraPreset === 'front' && styles.cameraPresetTextActive,
+              ]}
+            >
+              정면
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.cameraPresetChip,
+              cameraPreset === 'side45' && styles.cameraPresetChipActive,
+            ]}
+            onPress={() => setCameraPreset('side45')}
+          >
+            <Text
+              style={[
+                styles.cameraPresetText,
+                cameraPreset === 'side45' && styles.cameraPresetTextActive,
+              ]}
+            >
+              측면 45°
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.cameraPresetChip,
+              cameraPreset === 'top' && styles.cameraPresetChipActive,
+            ]}
+            onPress={() => setCameraPreset('top')}
+          >
+            <Text
+              style={[
+                styles.cameraPresetText,
+                cameraPreset === 'top' && styles.cameraPresetTextActive,
+              ]}
+            >
+              탑뷰
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.cameraPresetChip,
+              cameraPreset === 'free' && styles.cameraPresetChipActive,
+            ]}
+            onPress={() => setCameraPreset('free')}
+          >
+            <Text
+              style={[
+                styles.cameraPresetText,
+                cameraPreset === 'free' && styles.cameraPresetTextActive,
+              ]}
+            >
+              360° 자유
+            </Text>
+          </Pressable>
+        </View>
+
         {/* Drop Target Zone */}
         <View
           style={[
@@ -402,6 +472,10 @@ export default function PlaceStone3DScreen() {
           phase={phase}
           droppedStone={renderedDroppedStone}
           showControls={false}
+          enableOrbitControls
+          cameraPreset={cameraPreset}
+          onCameraPresetChange={setCameraPreset}
+          towerTopY={activeTower.topY()}
           onCollapseAnimationComplete={() => handleCollapseComplete()}
           onPlaybackComplete={() => handleCollapseComplete()}
         />
@@ -592,6 +666,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
     userSelect: 'none' as any,
+  },
+  cameraPresetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 8,
+    zIndex: 10,
+  },
+  cameraPresetChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: TossTheme.radius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  cameraPresetChipActive: {
+    backgroundColor: TossTheme.colors.primary,
+    borderColor: TossTheme.colors.primary,
+  },
+  cameraPresetText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textSecondary,
+    fontWeight: '600',
+  },
+  cameraPresetTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   dropZone: {
     alignItems: 'center',

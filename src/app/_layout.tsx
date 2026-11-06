@@ -58,6 +58,7 @@ export default function RootLayout() {
         <Stack.Screen name="me/wishes" />
         <Stack.Screen name="groups/index" />
         <Stack.Screen name="settings/index" />
+        <Stack.Screen name="tower/index" options={{ headerShown: false }} />
       </Stack>
       <StoneWishToast store={toastStore} />
     </View>
