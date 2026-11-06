@@ -55,6 +55,8 @@ export interface StoneTowerCanvasProps {
   readonly enablePan?: boolean;
   readonly enableZoom?: boolean;
   readonly selectedStoneId?: WishId | null;
+  readonly hoveredStoneId?: string | null;
+  readonly onHoverStone?: (stoneId: string | null) => void;
   readonly hoveringPreviewStone?: {
     shape: StoneShape;
     color: string;
@@ -200,12 +202,16 @@ function StoneMesh3D({
   meshMapRef,
   onSelect,
   isSelected = false,
+  isHovered = false,
+  onHover,
 }: {
   node: StoneRenderNode;
   index: number;
   meshMapRef: React.MutableRefObject<Map<string, THREE.Mesh>>;
   onSelect?: () => void;
   isSelected?: boolean;
+  isHovered?: boolean;
+  onHover?: (hovered: boolean) => void;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -225,9 +231,10 @@ function StoneMesh3D({
   const sy = geo.scale.y * 0.5;
   const sz = geo.scale.z * 0.5;
   const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
+  const scaleMultiplier = isHovered ? 1.07 : 1.0;
   const meshScale: [number, number, number] = isPolyhedron
-    ? [sx / sy, 1, sz / sy]
-    : [1, 1, 1];
+    ? [(sx / sy) * scaleMultiplier, scaleMultiplier, (sz / sy) * scaleMultiplier]
+    : [scaleMultiplier, scaleMultiplier, scaleMultiplier];
 
   return (
     <mesh
@@ -239,6 +246,13 @@ function StoneMesh3D({
       onClick={(e) => {
         e.stopPropagation();
         onSelect?.();
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        onHover?.(true);
+      }}
+      onPointerOut={() => {
+        onHover?.(false);
       }}
     >
       {geo.shape === 'round' ? (
@@ -260,6 +274,27 @@ function StoneMesh3D({
         emissiveIntensity={isSelected ? 0.85 : node.material.emissiveIntensity}
         flatShading={geo.flatShading}
       />
+      {isHovered && (
+        <mesh scale={[1.06, 1.06, 1.06]}>
+          {geo.shape === 'round' ? (
+            <dodecahedronGeometry args={[sy * 0.5, 1]} />
+          ) : geo.shape === 'flat' ? (
+            <boxGeometry args={[sx, sy, sz]} />
+          ) : geo.shape === 'tall' ? (
+            <boxGeometry args={[sx, sy, sz]} />
+          ) : geo.shape === 'pebble' ? (
+            <dodecahedronGeometry args={[sy * 0.5, 1]} />
+          ) : (
+            <dodecahedronGeometry args={[sy * 0.5, 0]} />
+          )}
+          <meshBasicMaterial
+            color="#3182F6"
+            wireframe
+            transparent
+            opacity={0.88}
+          />
+        </mesh>
+      )}
     </mesh>
   );
 }
@@ -564,7 +599,7 @@ export function InteractiveDraggableStone3D({
 
   return (
     <group>
-      {/* Spawn Pedestal Ring on Floor at initial position */}
+      {/* 1. Spawn Pedestal Ring on Floor at initial position */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[initialPos[0], 0.01, initialPos[2]]}
@@ -578,21 +613,65 @@ export function InteractiveDraggableStone3D({
         />
       </mesh>
 
-      {/* Target Apex Guide Ring (active during drag above lower elevation) */}
-      {isDragging && currentPos[1] >= 0.35 && (
-        <mesh
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[currentPos[0], Math.max(0.02, towerTopY + 0.02), currentPos[2]]}
-        >
-          <ringGeometry args={[0.08, 0.18, 32]} />
-          <meshBasicMaterial
-            color={auraColor}
-            transparent
-            opacity={isOverDropZone ? 0.85 : 0.45}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
+      {/* 2. Cairn Apex Sweet Spot Marker (Stationary Target Center on Top of Tower) */}
+      {isDragging && (
+        <group position={[0, Math.max(0.012, towerTopY + 0.012), 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.16, 0.22, 32]} />
+            <meshBasicMaterial color="#3182F6" transparent opacity={0.35} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.035, 16]} />
+            <meshBasicMaterial color="#3182F6" transparent opacity={0.65} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
       )}
+
+      {/* 3. Real-Time Dynamic Drop Prediction Marker (Projected Landing Footprint) */}
+      {(() => {
+        if (!isDragging) return null;
+        const isOverTowerSupport =
+          Math.abs(currentPos[0]) <= 0.35 && Math.abs(currentPos[2]) <= 0.30;
+        const projectedLandingY = isOverTowerSupport
+          ? Math.max(0.015, towerTopY + 0.015)
+          : 0.015;
+        const beamHeight = Math.max(0.02, currentPos[1] - projectedLandingY);
+        const beamCenterY = projectedLandingY + beamHeight * 0.5;
+
+        const landingAuraColor = !isOverTowerSupport
+          ? '#FA5252' // Outside tower -> ground fall warning (Red)
+          : balanceRating === 'stable'
+          ? '#3182F6' // Stable sweet spot (Toss Blue)
+          : '#FF9500'; // Off-center (Amber)
+
+        return (
+          <group>
+            {/* Projected Landing Reticle Ring & Contact Shadow */}
+            <group position={[currentPos[0], projectedLandingY, currentPos[2]]}>
+              <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <circleGeometry args={[0.22, 32]} />
+                <meshBasicMaterial color="#000000" transparent opacity={0.38} side={THREE.DoubleSide} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
+                <ringGeometry args={[0.13, 0.20, 32]} />
+                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.88} side={THREE.DoubleSide} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
+                <circleGeometry args={[0.04, 16]} />
+                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.92} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+
+            {/* Vertical Laser Drop Guide Beam */}
+            {currentPos[1] > projectedLandingY + 0.04 && (
+              <mesh position={[currentPos[0], beamCenterY, currentPos[2]]}>
+                <cylinderGeometry args={[0.005, 0.005, beamHeight, 8]} />
+                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.55} />
+              </mesh>
+            )}
+          </group>
+        );
+      })()}
 
       {/* 3D Draggable Stone Mesh */}
       <mesh
@@ -798,6 +877,8 @@ export function StoneTowerCanvas({
   enablePan = false,
   enableZoom = true,
   selectedStoneId,
+  hoveredStoneId,
+  onHoverStone,
   hoveringPreviewStone,
   activeStone,
   isDraggable = true,
@@ -983,13 +1064,35 @@ export function StoneTowerCanvas({
             camera={{ position: [0, 1.8, 3.8], fov: 45 }}
             style={{ width: '100%', height: '100%', touchAction: 'none', userSelect: 'none' }}
           >
-            <ambientLight intensity={0.55} />
+            <ambientLight intensity={0.70} />
             <directionalLight
               position={[3.5, 6.0, 4.0]}
-              intensity={1.15}
+              intensity={1.35}
               castShadow
             />
-            <hemisphereLight args={['#EAE4DC', '#1E2026', 0.4]} />
+            {/* Silhouette Rim Back-Light for Dark Mode Contrast */}
+            <directionalLight
+              position={[0, 4.0, -4.5]}
+              intensity={0.95}
+              color="#94B8FF"
+            />
+            {/* Warm Fill Light */}
+            <directionalLight
+              position={[-3.5, 2.5, 2.0]}
+              intensity={0.55}
+              color="#F5EFE6"
+            />
+            <hemisphereLight args={['#F0EDE6', '#2A2E38', 0.55]} />
+
+            {/* Circular Ground Pedestal Platform (Dark Mode Stone Contrast) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} receiveShadow>
+              <circleGeometry args={[2.0, 64]} />
+              <meshStandardMaterial color="#1C1F26" roughness={0.88} metalness={0.08} />
+            </mesh>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.004, 0]}>
+              <ringGeometry args={[1.96, 2.04, 64]} />
+              <meshBasicMaterial color="#2B3240" opacity={0.65} transparent />
+            </mesh>
 
             {enableOrbitControls && (
               <OrbitControls
@@ -1025,6 +1128,8 @@ export function StoneTowerCanvas({
                 index={index}
                 meshMapRef={meshMapRef}
                 isSelected={node.id === effectiveSelectedId}
+                isHovered={node.id === hoveredStoneId}
+                onHover={(hovered) => onHoverStone?.(hovered ? node.id : null)}
                 onSelect={() => handleStonePress(node)}
               />
             ))}
