@@ -194,3 +194,96 @@ test('Feature 4.2: StoneTowerCanvas.tsx renders glowing 3D wireframe outline for
     'StoneMesh3D must render glowing Toss Blue wireframe halo on hover'
   );
 });
+
+// =============================================================================
+// Feature 5: Anti-Chatter Hover & Camera-Relative 3D Drag
+// =============================================================================
+test('Feature 5.1: StoneTowerCanvas eliminates hover highlight chattering', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve(projectRoot, 'presentation/components/StoneTowerCanvas.tsx'),
+    'utf8'
+  );
+
+  // Wireframe halo mesh must disable raycast to prevent firing pointerout on parent mesh
+  assert.ok(
+    canvasSource.includes('scale={[1.08, 1.08, 1.08]} raycast={() => null}'),
+    'Hover outline wireframe mesh must disable raycasting (raycast={() => null}) to avoid flickering'
+  );
+
+  // Parent mesh scale must not bounce on hover to prevent edge fluttering
+  assert.ok(
+    canvasSource.includes('[sx / sy, 1, sz / sy]'),
+    'Mesh scale must remain constant on hover to prevent edge boundary fluttering'
+  );
+
+  // onPointerOut must stop propagation
+  assert.ok(
+    canvasSource.includes('onPointerOut={(e) => {') && canvasSource.includes('e.stopPropagation();') && canvasSource.includes('onHover?.(false);'),
+    'onPointerOut must call e.stopPropagation()'
+  );
+
+  // Hover state updates must use debouncing / hysteresis
+  assert.ok(
+    canvasSource.includes('hoverDebounceRef') && canvasSource.includes('handleStoneHover'),
+    'StoneTowerCanvas must implement handleStoneHover with debounce hysteresis'
+  );
+});
+
+test('Feature 5.2: tower/index.tsx uses debounce hysteresis and pointerEvents none on popover items', () => {
+  const towerSource = fs.readFileSync(
+    path.resolve(projectRoot, 'app/tower/index.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    towerSource.includes('hoverDebounceTimerRef') && towerSource.includes('handleSetHoveredStone'),
+    'tower/index.tsx must debounce hover events on cluster items'
+  );
+  assert.ok(
+    towerSource.includes('pointerEvents="none"'),
+    'Cluster item child elements must have pointerEvents="none" to avoid target switching'
+  );
+});
+
+test('Feature 5.3: InteractiveDraggableStone3D tracks camera azimuth and drags relative to camera', () => {
+  const canvasSource = fs.readFileSync(
+    path.resolve(projectRoot, 'presentation/components/StoneTowerCanvas.tsx'),
+    'utf8'
+  );
+
+  // Azimuth tracking
+  assert.ok(
+    canvasSource.includes('cameraAzimuth') && canvasSource.includes('Math.atan2(camera.position.x, camera.position.z)'),
+    'InteractiveDraggableStone3D must track camera azimuth angle'
+  );
+
+  // Spawn in front of camera
+  assert.ok(
+    canvasSource.includes('Math.sin(cameraAzimuth) * spawnDist') &&
+    canvasSource.includes('Math.cos(cameraAzimuth) * spawnDist'),
+    'Unplaced stone must spawn directly in front of camera at any viewing angle'
+  );
+
+  // Camera-relative drag translation
+  assert.ok(
+    canvasSource.includes('const rightX = Math.cos(theta);') &&
+    canvasSource.includes('const rightZ = -Math.sin(theta);'),
+    'Drag deltaX must project along camera right vector to eliminate 180 degree inverted movement'
+  );
+});
+
+test('Feature 5.4: place.tsx status captions remove obsolete target reference', () => {
+  const placeSource = fs.readFileSync(
+    path.resolve(projectRoot, 'app/stack/place.tsx'),
+    'utf8'
+  );
+
+  assert.ok(
+    !placeSource.includes('타겟 원'),
+    'place.tsx must NOT reference obsolete 2D target circle ("타겟 원")'
+  );
+  assert.ok(
+    placeSource.includes('돌을 위로 끌어올려 돌탑 꼭대기에 균형을 맞춰보세요'),
+    'place.tsx must use updated 3D placement prompt'
+  );
+});

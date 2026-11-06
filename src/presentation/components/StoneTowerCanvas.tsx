@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -15,6 +15,10 @@ import {
   computePresetCameraView,
 } from './cameraPresetSpec.ts';
 import {
+  BALANCE_THRESHOLD_CAUTION,
+  BALANCE_THRESHOLD_STABLE,
+  DROP_ZONE_MAX_DEPTH_Z,
+  DROP_ZONE_MAX_LATERAL_X,
   computeDragWorldPosition,
   computeInitialSpawnPosition,
   calculate3DDropPoseFromWorldPosition,
@@ -231,10 +235,9 @@ function StoneMesh3D({
   const sy = geo.scale.y * 0.5;
   const sz = geo.scale.z * 0.5;
   const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
-  const scaleMultiplier = isHovered ? 1.07 : 1.0;
   const meshScale: [number, number, number] = isPolyhedron
-    ? [(sx / sy) * scaleMultiplier, scaleMultiplier, (sz / sy) * scaleMultiplier]
-    : [scaleMultiplier, scaleMultiplier, scaleMultiplier];
+    ? [sx / sy, 1, sz / sy]
+    : [1, 1, 1];
 
   return (
     <mesh
@@ -251,7 +254,8 @@ function StoneMesh3D({
         e.stopPropagation();
         onHover?.(true);
       }}
-      onPointerOut={() => {
+      onPointerOut={(e) => {
+        e.stopPropagation();
         onHover?.(false);
       }}
     >
@@ -275,7 +279,7 @@ function StoneMesh3D({
         flatShading={geo.flatShading}
       />
       {isHovered && (
-        <mesh scale={[1.06, 1.06, 1.06]}>
+        <mesh scale={[1.08, 1.08, 1.08]} raycast={() => null}>
           {geo.shape === 'round' ? (
             <dodecahedronGeometry args={[sy * 0.5, 1]} />
           ) : geo.shape === 'flat' ? (
@@ -469,6 +473,7 @@ export function InteractiveDraggableStone3D({
   onDragCancel?: () => void;
   phase?: StackPlacementPhase;
 }) {
+  const { camera } = useThree();
   const meshRef = React.useRef<THREE.Mesh>(null);
   const geo = buildStoneGeometrySpec(stone.shape);
   const sx = geo.scale.x * 0.5;
@@ -480,13 +485,26 @@ export function InteractiveDraggableStone3D({
     ? [sx / sy, 1, sz / sy]
     : [1, 1, 1];
 
-  const initialPos = useMemo(() => computeInitialSpawnPosition(towerTopY), [towerTopY]);
+  // Camera azimuth angle tracking: ensures unplaced stone is ALWAYS in front of user's camera
+  const [cameraAzimuth, setCameraAzimuth] = useState(0);
+  const isDraggingRef = useRef(false);
+  const dragAzimuthRef = useRef(0);
+
+  // Compute camera-relative spawn position (1.15m in front of current camera viewpoint)
+  const spawnDist = 1.15;
+  const initialPos = useMemo<readonly [number, number, number]>(() => {
+    return [
+      Number((Math.sin(cameraAzimuth) * spawnDist).toFixed(4)),
+      0.18,
+      Number((Math.cos(cameraAzimuth) * spawnDist).toFixed(4)),
+    ];
+  }, [cameraAzimuth]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [currentPos, setCurrentPos] = useState<readonly [number, number, number]>(initialPos);
   const [balanceRating, setBalanceRating] = useState<'stable' | 'caution' | 'critical'>('stable');
   const [isOverDropZone, setIsOverDropZone] = useState(false);
 
-  const isDraggingRef = useRef(false);
   const currentPosRef = useRef<readonly [number, number, number]>(initialPos);
   const startPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -501,7 +519,15 @@ export function InteractiveDraggableStone3D({
     }
   }, [phase, initialPos, stone]);
 
-  useFrame(({ clock }) => {
+  // Update camera azimuth angle while idle so stone stays in front of user
+  useFrame(({ clock, camera }) => {
+    if (!isDraggingRef.current && phase === 'IDLE') {
+      const az = Math.atan2(camera.position.x, camera.position.z);
+      if (Math.abs(az - cameraAzimuth) > 0.05) {
+        setCameraAzimuth(az);
+      }
+    }
+
     if (!meshRef.current) return;
     if (!isDraggingRef.current) {
       const bob = Math.sin(clock.getElapsedTime() * 2.5) * 0.015;
@@ -533,6 +559,10 @@ export function InteractiveDraggableStone3D({
     isDraggingRef.current = true;
     setIsDragging(true);
 
+    // Lock camera azimuth at drag start
+    const startAz = Math.atan2(camera.position.x, camera.position.z);
+    dragAzimuthRef.current = startAz;
+
     if (controlsRef?.current) {
       controlsRef.current.enabled = false;
     }
@@ -548,7 +578,50 @@ export function InteractiveDraggableStone3D({
         if (!isDraggingRef.current) return;
         const deltaX = ev.clientX - startPointerRef.current.x;
         const deltaY = ev.clientY - startPointerRef.current.y;
-        const result = computeDragWorldPosition(deltaX, deltaY, initialPos, towerTopY);
+
+        // Camera-relative drag mathematics:
+        // Moving mouse right moves along camera right vector
+        // Moving mouse up moves upwards and forward towards tower apex
+        const theta = dragAzimuthRef.current;
+        const dxWorld = deltaX * 0.003;
+        const dyWorld = -deltaY * 0.0035;
+
+        const targetDropY = Math.max(0, towerTopY) + 0.35;
+        const totalVerticalSpan = Math.max(0.2, targetDropY - initialPos[1]);
+        const rawProgress = dyWorld / totalVerticalSpan;
+        const normalizedProgress = Math.max(0, Math.min(1, rawProgress));
+
+        // Lateral displacement along camera right (cos theta, -sin theta)
+        const rightX = Math.cos(theta);
+        const rightZ = -Math.sin(theta);
+
+        // Forward radial convergence from spawnDist (1.15) to 0.0
+        const radialDist = spawnDist * (1 - normalizedProgress);
+
+        const x = Number((Math.sin(theta) * radialDist + rightX * dxWorld).toFixed(4));
+        const z = Number((Math.cos(theta) * radialDist + rightZ * dxWorld).toFixed(4));
+        const y = Number((initialPos[1] + dyWorld).toFixed(4));
+
+        // Evaluate live balance based on lateral deviation from central axis
+        const absLateral = Math.abs(dxWorld);
+        const balance: 'stable' | 'caution' | 'critical' =
+          absLateral <= BALANCE_THRESHOLD_STABLE
+            ? 'stable'
+            : absLateral <= BALANCE_THRESHOLD_CAUTION
+            ? 'caution'
+            : 'critical';
+
+        const isOverZone =
+          y >= targetDropY - 0.22 &&
+          absLateral <= DROP_ZONE_MAX_LATERAL_X &&
+          radialDist <= DROP_ZONE_MAX_DEPTH_Z;
+
+        const result: DragWorldPositionResult = {
+          position: [x, y, z] as const,
+          normalizedProgress,
+          isOverDropZone: isOverZone,
+          balanceRating: balance,
+        };
 
         currentPosRef.current = result.position;
         setCurrentPos(result.position);
@@ -895,6 +968,24 @@ export function StoneTowerCanvas({
   const [lushMossEnabled, setLushMossEnabled] = useState(true);
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const orbitControlsRef = useRef<any>(null);
+  const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleStoneHover = useCallback(
+    (stoneId: string | null) => {
+      if (hoverDebounceRef.current) {
+        clearTimeout(hoverDebounceRef.current);
+        hoverDebounceRef.current = null;
+      }
+      if (stoneId !== null) {
+        onHoverStone?.(stoneId);
+      } else {
+        hoverDebounceRef.current = setTimeout(() => {
+          onHoverStone?.(null);
+        }, 45);
+      }
+    },
+    [onHoverStone]
+  );
 
   const activeStoneInstance = useMemo(() => {
     if (!activeStone) return null;
@@ -1129,7 +1220,7 @@ export function StoneTowerCanvas({
                 meshMapRef={meshMapRef}
                 isSelected={node.id === effectiveSelectedId}
                 isHovered={node.id === hoveredStoneId}
-                onHover={(hovered) => onHoverStone?.(hovered ? node.id : null)}
+                onHover={(hovered) => handleStoneHover(hovered ? node.id : null)}
                 onSelect={() => handleStonePress(node)}
               />
             ))}
