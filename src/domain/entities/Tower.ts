@@ -1,17 +1,22 @@
+import { StonePhysicsBodyFactory } from '../../infrastructure/physics/StonePhysicsBodyFactory.ts';
 import { type BloomType } from '../value-objects/BloomType.ts';
 import { type CheerLevelValue } from '../value-objects/CheerLevel.ts';
-import { TowerKey } from '../value-objects/TowerKey.ts';
+import { type CategoryCode, TowerKey } from '../value-objects/TowerKey.ts';
 import { Stone } from './Stone.ts';
 import { type WishId, type WishStatus } from './Wish.ts';
 
 export interface TowerStoneItem {
   readonly id: WishId;
+  readonly content?: string;
+  readonly category?: CategoryCode;
   readonly stone: Stone;
   readonly status: Extract<WishStatus, 'active' | 'fulfilled'>;
   readonly bloom: BloomType | null;
   readonly cheerLevel: CheerLevelValue;
+  readonly cheerCount?: number;
   readonly isMine: boolean;
   readonly nickname: string | null;
+  readonly createdAt?: Date;
 }
 
 export interface TowerStats {
@@ -49,4 +54,20 @@ export class Tower {
     if (this.stones.length === 0) return 0;
     return Math.max(...this.stones.map((s) => s.stone.pose.position.y));
   }
+
+  /**
+   * 현재 돌탑의 실제 최상단 물리 표면 Y 좌표 반환 (관통/겹침 방지 기준점)
+   * 각 돌의 중심 Y 좌표 + 형상별 물리 반높이(halfExtents.y) 중 최댓값
+   * 근거: ORIGINAL_REQUEST R2, F02
+   */
+  topSurfaceY(): number {
+    if (this.stones.length === 0) return 0;
+    return Math.max(
+      ...this.stones.map((item) => {
+        const config = StonePhysicsBodyFactory.getShapeConfig(item.stone.shape);
+        return item.stone.pose.position.y + config.halfExtents.y;
+      })
+    );
+  }
 }
+

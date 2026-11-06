@@ -1,4 +1,7 @@
-import { type StackStoneResult } from '../../application/usecases/StackStoneUseCase.ts';
+import {
+  type StackStoneResult,
+  type StackStoneSavedResult,
+} from '../../application/usecases/StackStoneUseCase.ts';
 import { createMsaAppContainer } from '../../container.ts';
 import { Stone, type StoneShape } from '../../domain/entities/Stone.ts';
 import { Tower } from '../../domain/entities/Tower.ts';
@@ -30,6 +33,7 @@ export type StackPlacementPhase =
   | 'PLACING'
   | 'BALANCING'
   | 'COLLAPSING'
+  | 'FALLEN_CHOICE'
   | 'SETTLED';
 
 export type StackStoneListener = (state: StackStoneViewState) => void;
@@ -60,6 +64,7 @@ export interface StackStoneViewState {
  * - SCR-06 소원 작성: `CategoryAutoClassifier` 실시간 자동 분류 배지 제공 및 사용자 수동 오버라이드 (D-016)
  * - 일일 쿼터: `DailyWishQuota`(기본 5개 + 리워드 광고/결제 보너스 충전) 검사 및 차감 (D-018)
  * - SCR-07 / SCR-08: `ARSessionFactory`를 통한 AR 세션 초기화, 드래그 앤 드롭 물리 안착, 실패 시 `tower_collapsed` 연출, 3회 실패 시 자동 안착 (D-003, D-019)
+ * - D-022: 돌이 미끄러져 떨어졌을 때 그 자리 그대로 두기(`confirmFallenPlacement`) 및 다시 올려보기(`retryPlacement`) 지원
  * - SCR-09: AR 사진 캡처 및 미리보기 상태 제어 (DB-013)
  */
 export class StackStoneController {
@@ -163,6 +168,18 @@ export class StackStoneController {
 
   retry(): StackStoneViewState {
     return this.resetPlacement();
+  }
+
+  /**
+   * 쓰러진 돌을 사용자가 다시 탑 위에 올려보기를 선택했을 때 (attempt는 유지)
+   */
+  retryPlacement(): StackStoneViewState {
+    return this.updateState({
+      phase: 'IDLE',
+      towerCollapsed: false,
+      lastSimulationTrajectory: undefined,
+      lastAffectedStones: undefined,
+    });
   }
 
   /**
@@ -332,6 +349,45 @@ export class StackStoneController {
       throw error;
     } finally {
       this.isPlacing = false;
+    }
+  }
+
+  /**
+   * 굴러떨어진 돌을 사용자가 그 자리(바닥/기초 옆)에 그대로 두기로 선택했을 때 확정 저장 (D-022)
+   * "떨어져서 그것도 하나의 탑이 될 수 있으니까"
+   */
+  async confirmFallenPlacement(fallenPose: Pose): Promise<StackStoneSavedResult> {
+    if (!this.state.quota.canStack()) {
+      throw new Error('DAILY_QUOTA_EXCEEDED');
+    }
+
+    try {
+      const result = await this.app.useCases.stackStone.confirmFallen(
+        {
+          content: this.state.content,
+          category: this.state.effectiveCategory,
+          scope: this.state.scope,
+          stone: this.state.selectedStone,
+        },
+        fallenPose
+      );
+
+      const consumedQuota = this.state.quota.consumeOne();
+      this.updateState({
+        phase: 'SETTLED',
+        attempt: 0,
+        towerCollapsed: false,
+        quota: consumedQuota,
+        savedWishId: result.id,
+        effectiveCategory: result.category,
+        selectedStone: this.state.selectedStone.withPose(result.pose),
+        lastAffectedStones: undefined,
+      });
+
+      return result;
+    } catch (error) {
+      this.updateState({ phase: 'IDLE' });
+      throw error;
     }
   }
 

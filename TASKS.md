@@ -1,6 +1,6 @@
-﻿# StoneWish (위시 스톤) 프로젝트 태스크 현황
+# StoneWish (위시 스톤) 프로젝트 태스크 현황
 
-## 1. 완료된 작업 (Sprint 1 ~ 6 All Complete ✅)
+## 1. 완료된 작업 (Sprint 1 ~ 8 All Complete ✅)
 
 - [x] **Sprint 1: 기반 아키텍처 및 멀티 에이전트 워크트리 구축**
   - Git Worktree 분리 (worktree_frontend, worktree_backend), main 베이스라인 보존
@@ -21,17 +21,34 @@
 - [x] **Sprint 6: 감성 토스트 & 낙관적 UI & 내부 Feign/카테고리 조회**
   - Frontend: 감성 토스트 알림 시스템(StoneWishToast), 응원/돌올리기 즉시 화면 반영 및 실패 시 롤백(OptimisticMutationManager)
   - Backend: 카테고리 DB 조회(API-16 GET /api/v1/categories) 및 내부 마이크로서비스 요약 조회 Feign IPC 엔드포인트
+- [x] **Sprint 7: 3D 강체 물리 엔진(cannon-es) & 동적 전복/비산 붕괴 & Git 브랜치 전략 수립**
+  - Frontend/Physics: `SimpleTowerPhysicsWorld.ts`, `StabilityEvaluator.ts` (Andrew's Monotone Chain 2D 볼록 껍질 지지 다각형), 60Hz LERP/SLERP Three.js 궤적 보간
+  - Interaction/Design: 토스 미니멀 스타일 개편, 유기적 비대칭 자연석 형태학, 다층 적석탑(Cairn) & 이끼/들꽃 블랭킷, 텍스트 드래그 차단, 윈도우 깨진 글리프 제거
+  - Git/Governance: `main` 직접 푸시 금지, `develop` 및 `feature/*` 브랜치 전략 명문화 (`docs/GIT_BRANCHING_STRATEGY.md`, `D-021`)
+- [x] **Sprint 8: 돌 겹침 방지 비간섭 기하 정합성 & 굴러떨어진 돌 안착 UX (D-022)**
+  - Zero Overlap 2D/3D: 음수 마진 제거, tierRow 6px 자연 접촉 간격, 3D 기초단(-0.34m, +0.34m) 완전 비간섭 tangent contact 구현
+  - Fallen Stone Choice UX: 물리 시뮬레이션으로 미끄러져 떨어진 돌에 대해 [이 자리에 그대로 두기] vs [다시 올려보기] 선택지 제공, 기존 돌탑 유지 및 바닥 안착 확정 영속화
+  - Quality Gates: 83/83 단위·통합·극한 회귀 테스트 100% PASS, `npx tsc --noEmit` 0 에러 통과
 
 ---
 
 ## 2. 테스트 검증 완료 상태
-- **Frontend (
-pm test)**: **18 / 18 suites 100% PASS**
+- **Frontend (npm test)**: **83 / 83 tests 100% PASS**
   - domain-and-ar.test.ts: PASS
-  - rontend-controllers.test.ts: PASS
+  - frontend-controllers.test.ts: PASS
   - e2e-user-journey.test.ts: PASS
   - canvas-components.test.ts: PASS
   - optimistic-and-toast.test.ts: PASS
+  - physics-rigidbody-simulation.test.ts: PASS
+  - tower-dynamic-collapse.test.ts: PASS
+  - m2-adversarial-stress.test.ts: PASS
+  - m2-empirical-challenge.test.ts: PASS
+  - challenger-m2.test.ts: PASS
+  - challenger-m4-final.test.ts: PASS
+  - m4-adversarial-tier5.test.ts: PASS
+  - numerical-stability-tier5.stress.test.ts: PASS
+  - tier5-remediation.test.ts: PASS
+  - stone-stacking-ux-d022.test.ts: PASS (신규 2개 테스트 추가 통과)
 - **Backend (gradle test)**: **6개 서브프로젝트 전원 BUILD SUCCESSFUL (100% PASS)**
   - gateway-service: 라우팅 및 JWT 보안 필터 스모크/단위 테스트
   - user-auth-service: 서명 JWT 발급/검증, 배틀태그 복합 유니크 JPA 테스트

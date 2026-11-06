@@ -1,10 +1,10 @@
 # Test Readiness Verification Manifest (TEST_READY.md)
 
 **Project**: Wish Stone (`위시 스톤`)  
-**Milestone**: M1 Physics Remediation Track Complete (Gate 1 Remediation Gen2)  
-**Date**: 2026-11-05  
-**Author**: `test_writer_physics_m1_gen2` (Teamwork Test Writer)  
-**Verification Gate**: **100% PASS** (38 tests passed, 0 failed, 0 skipped, execution duration: ~570ms; `npx.cmd tsc --noEmit`: 0 errors)  
+**Milestone**: Milestone 4: Requirement-Driven Opaque-Box E2E Testing Suite (3D Drag Interaction, Anti-Clipping Geometry & Physics, Home Cleanup & Settings Separation)  
+**Date**: 2026-11-06  
+**Author**: `test_writer_e2e_m4_1` (Teamwork Test Writer)  
+**Verification Gate**: **100% PASS** (Milestone 4 E2E Suite: 40 / 40 tests passed, 0 failed, 0 skipped, duration: ~176ms; `npx tsc --noEmit`: 0 errors)  
 
 ---
 
@@ -16,18 +16,10 @@ The test suite runs natively in headless Node.js v24 with ESM and zero external 
 Set-Location "c:\Users\sybon\Desktop\workspace\code\wish_stone\위시 스톤"
 
 # 1. Typecheck verification gate: 0 errors
-npx.cmd tsc --noEmit
+cmd /c "npx tsc --noEmit"
 
-# 2. Run complete automated test suite (all 38 tests across 7 test suites)
-npm.cmd test
-
-# 3. Run individual physics simulation test suites directly
-node --test src/__tests__/physics-rigidbody-simulation.test.ts
-node --test src/__tests__/tower-dynamic-collapse.test.ts
-
-# 4. Verify deliverable classes are directly imported in tests
-Select-String -Path "src/__tests__/physics-rigidbody-simulation.test.ts" -Pattern "StonePhysicsBodyFactory|StabilityEvaluator|SimpleTowerPhysicsWorld"
-Select-String -Path "src/__tests__/tower-dynamic-collapse.test.ts" -Pattern "StonePhysicsBodyFactory|StabilityEvaluator|SimpleTowerPhysicsWorld"
+# 2. Run new Milestone 4 E2E test suite directly (40 tests)
+node --test src/__tests__/e2e-drag-anti-clipping-home.test.ts
 ```
 
 ---
@@ -37,73 +29,83 @@ Select-String -Path "src/__tests__/tower-dynamic-collapse.test.ts" -Pattern "Sto
 ### Summary Matrix
 | Category | File | Test Count | Pass Status | Duration |
 |---|---|---|---|---|
-| **Tier 1: Primitives & Dynamics** | `src/__tests__/physics-rigidbody-simulation.test.ts` | 6 tests | 6 / 6 PASS | ~60ms |
-| **Tier 2: Boundary & Corner Cases** | `src/__tests__/physics-rigidbody-simulation.test.ts` | 5 tests | 5 / 5 PASS | ~65ms |
-| **Tier 3: Cross-Feature Integration** | `src/__tests__/tower-dynamic-collapse.test.ts` | 4 tests | 4 / 4 PASS | ~120ms |
-| **Tier 4: Scenarios & Anti-Canned** | `src/__tests__/tower-dynamic-collapse.test.ts` | 5 tests | 5 / 5 PASS | ~50ms |
-| **Baseline Application Test Suites** | 5 suites (`canvas`, `domain`, `e2e`, `controllers`, `toast`) | 18 tests | 18 / 18 PASS | ~275ms |
-| **Total Test Suite** | **7 test suites** | **38 tests** | **38 / 38 PASS** | **~570ms** |
+| **Tier 1: Feature Coverage (R1–R4)** | `src/__tests__/e2e-drag-anti-clipping-home.test.ts` | 24 tests | 24 / 24 PASS | ~35ms |
+| **Tier 2: Boundary & Corner Cases** | `src/__tests__/e2e-drag-anti-clipping-home.test.ts` | 6 tests | 6 / 6 PASS | ~15ms |
+| **Tier 3: Cross-Feature Interactions** | `src/__tests__/e2e-drag-anti-clipping-home.test.ts` | 5 tests | 5 / 5 PASS | ~12ms |
+| **Tier 4: Real-World User Scenarios** | `src/__tests__/e2e-drag-anti-clipping-home.test.ts` | 5 tests | 5 / 5 PASS | ~18ms |
+| **Total Milestone 4 E2E Suite** | `src/__tests__/e2e-drag-anti-clipping-home.test.ts` | **40 tests** | **40 / 40 PASS** | **~176ms** |
 
 ---
 
-### Detailed Test Inventory
+### Detailed Test Inventory (`e2e-drag-anti-clipping-home.test.ts`)
 
-#### Tier 1: Physics Primitives & Rigid-Body Dynamics (`physics-rigidbody-simulation.test.ts`)
-- [x] **T1.1 - Fixed Timestep Stepping & Determinism**: Directly instantiates `SimpleTowerPhysicsWorld`, verifies manual stepping `world.step(dt)` and exact deterministic trajectory repeatability across identical runs.
-- [x] **T1.2 - Gravitational Acceleration & Free Fall Derivatives**: Uses `StonePhysicsBodyFactory.createStoneBody()` (`shape: 'round'`) and `StonePhysicsBodyFactory.configureWorldMaterials()`; verifies analytical velocity $v_y(t) = -gt$, zero lateral drift, and second numerical derivative $a_y[k] = \frac{\Delta v_y}{\Delta t} = -9.82 \pm 0.05\,\text{m/s}^2$.
-- [x] **T1.3 - Ground Plane Collision & Restitution Decay**: Uses `StonePhysicsBodyFactory.createGroundBody()` and `createStoneBody()` with `shape: 'flat'`; verifies resting COM height matching half-extent ($y = h \pm 0.02\,\text{m}$) and velocity dampening.
-- [x] **T1.4 - Normal Force Equilibrium & Sleep State**: Uses `StonePhysicsBodyFactory.createStoneBody()` (`shape: 'boulder'`); verifies normal force balance on ground plane under gravity, velocity damping ($\|v\| < 0.005\,\text{m/s}$), and automatic transition into `CANNON.Body.SLEEPING` state.
-- [x] **T1.5 - Friction Resistance & Kinetic Energy Arrest**: Uses `StonePhysicsBodyFactory.getStoneMaterial()` and `getGroundMaterial()`; verifies Coulomb friction by comparing frictionless sliding ($\mu = 0.0 \implies v_x = 3.0\,\text{m/s}, x > 2.5\,\text{m}$) against realistic rock friction ($\mu = 0.75 \implies v_x \approx 0, x < 0.6\,\text{m}$).
-- [x] **T1.6 - Shape Mass & Principal Inertia Tensor Properties**: Directly imports `StonePhysicsBodyFactory.SHAPE_CONFIGS` across all 5 shapes (`boulder`, `flat`, `tall`, `round`, `pebble`); verifies mass ordering (`boulder` > `flat` > `tall` > `round` > `pebble`) and moment of inertia distributions ($I_{yy} > I_{xx}$ for wide `flat` stone, $I_{xx} > I_{yy}$ for slender `tall` stone).
+#### Tier 1: Feature Coverage (24 tests)
 
-#### Tier 2: Boundary Value Analysis & Extreme Corner Cases (`physics-rigidbody-simulation.test.ts`)
-- [x] **T2.1 - Sub-Critical Near-Edge Boundary Stability (Inside Support Polygon)**: Uses `StabilityEvaluator.computeSupportPolygon()` on base stone and `evaluateStability()`; verifies $d_{\text{margin}} > 0$ and `SimpleTowerPhysicsWorld.drop()` settling stably (`settled: true, collapsed: false`).
-- [x] **T2.2 - Super-Critical Near-Edge Boundary Tumble (Outside Support Polygon)**: Uses `StabilityEvaluator` and `SimpleTowerPhysicsWorld`; verifies $d_{\text{margin}} < 0$, overturning torque sign physically correct ($\tau_z < 0$ for $+X$ COM offset), and `drop()` tumbling to ground (`settled: false, collapsed: true`).
-- [x] **T2.3 - Extreme Mass Ratio Shock (Light Top vs Heavy Top Impact)**: Uses `StonePhysicsBodyFactory.createStoneBody()` with `boulder` (2.5kg) and `pebble` (0.6kg); verifies finite coordinates and solver stability under severe mass asymmetry.
-- [x] **T2.4 - High Elevation Impact Drop & Anti-Tunneling Verification**: High elevation drop ($h = 2.0\,\text{m}$) via `SimpleTowerPhysicsWorld`; verifies anti-tunneling across all trajectory frames ($y_{\min} > 0.05\,\text{m}$) and final resting equilibrium at half-height.
-- [x] **T2.5 - Aspect Ratio Stability (Slender Tall vs Wide Flat)**: Uses `StonePhysicsBodyFactory.createStoneBody()` with $30^\circ$ initial tilt; proves wide `flat` stone self-rights to upright equilibrium ($\theta_{\text{final}} < 5^\circ$), whereas slender `tall` stone topples onto its side ($\theta_{\text{final}} > 75^\circ$).
+##### Area 1: R1 (3D Stone Direct Drag Interaction Contracts, 6 tests)
+- [x] **T1.1 - Initial Spawn Coordinate**: Verifies `computeInitialSpawnPosition` initializes stone in front of cairn at $(0, 0.18, 1.15)$, safe from base stones at $Z = 0$.
+- [x] **T1.2 - 3D Pointer Drag Mechanics**: Verifies upward screen movement ($-\Delta y > 0$) maps to increasing 3D world $Y$ coordinate and lateral $\Delta x$ maps to world $X$.
+- [x] **T1.3 - Depth Convergence Contract**: Verifies $Z$ converges smoothly from $1.15 \to 0.0$ as normalized vertical progress advances towards target drop zone.
+- [x] **T1.4 - Real-Time Balance Rating**: Verifies horizontal cantilever evaluation: $|X| \le 0.12\text{m} \implies \text{'stable'}$, $0.12 < |X| \le 0.25\text{m} \implies \text{'caution'}$, $|X| > 0.25\text{m} \implies \text{'critical'}$.
+- [x] **T1.5 - Drop Pose Generation & Zone Detection**: Verifies `isOverDropZone` boundaries and verifies `calculate3DDropPoseFromWorldPosition` generates valid `Pose` with unit quaternion.
+- [x] **T1.6 - 2D Button Elimination & Canvas Drag Callbacks**: Verifies canvas props contract (`isDraggable`, `onStoneDragStart`, `onStoneDragMove`, `onStoneDrop`) and elimination of legacy 2D button UI.
 
-#### Tier 3: Cross-Feature Integration & Stacking Flows (`tower-dynamic-collapse.test.ts`)
-- [x] **T3.1 - Sequential Stacking Sequence & Tower Height Composite**: Constructs 3-stone tower via `SimpleTowerPhysicsWorld.addStatic([s1, s2])` and `world.drop(s3, pose)`; verifies resting equilibrium and composite tower height equaling exact sum of thicknesses.
-- [x] **T3.2 - Cascading Momentum Transfer in Multi-Stone Collapse**: Constructs 3-stone tower via `SimpleTowerPhysicsWorld.addStatic([base, mid, top])` and drops off-center boulder; verifies natural dynamic cascading collapse (`res.collapsed === true` and `res.affectedStones.length >= 1`), proving lower stones participate in dynamic tumble without freezing.
-- [x] **T3.3 - 3-Attempt Controller Flow & State Machine Integration**: Verifies `StackStoneController` 3-attempt lifecycle: Attempts 1 & 2 return `status: 'retry'`, `towerCollapsed: true`, quota preserved; Attempt 3 triggers auto-placement fallback at top of tower (`status: 'saved'`, `autoPlaced: true`).
-- [x] **T3.4 - Visual Effect Bus Collapse Event Emission**: Verifies physics drop failure triggers `tower_collapsed` event broadcast on `EffectBus` with `reason: 'drop_failed'` and `affectedStoneCount >= 1`.
+##### Area 2: R2 (Anti-Penetration & Anti-Clipping Invariants, 6 tests)
+- [x] **T1.7 - Visual & Collision Geometry Parity**: Verifies visual geometry half-extents match CANNON collision half-extents ($0.25 \cdot scale.y$) within $5\text{mm}$ across all 5 shapes.
+- [x] **T1.8 - Tower Top Surface Calculation**: Verifies `Tower.topSurfaceY()` returns true highest surface boundary $\max(y_i + h_{i,y})$ ($0.935\text{m}$) rather than stone center Y ($0.730\text{m}$).
+- [x] **T1.9 - Dynamic Pose.onTopOf Placement**: Verifies placing new stone on top surface yields base position flush with top surface with zero vertical interpenetration.
+- [x] **T1.10 - Drop Spawn Elevation Clearance**: Verifies spawn elevation $\text{dropY} = \text{topSurfaceY} + h_{\text{drop}} + 0.08 + \text{heightBonus}$ guarantees $\ge 8\text{cm}$ air clearance at frame 0.
+- [x] **T1.11 - Sample Tower Initial Coordinate Non-Penetration**: Verifies base stones sit above floor ($y \ge h_y$) and top stone sits above base top surface ($\Delta y \ge h_1 + h_2$).
+- [x] **T1.12 - Physics Settlement Invariant & Micro-Clamping**: Verifies settled stone bottom satisfies $y - h_{\text{drop}} \ge \text{topSurfaceY} - 0.02$, and clamping restores exact flush resting.
 
-#### Tier 4: Real-World Scenarios & Anti-Canned Verification (`tower-dynamic-collapse.test.ts`)
-- [x] **T4.1 - Canonical 3-Stone Natural Cairn (Boulder Base + Round Mid + Pebble Cap)**: Simulates 180 frames (3.0s) of natural cairn using `StonePhysicsBodyFactory.createStoneBody()`; verifies static equilibrium with height drift $< 0.005\,\text{m}$ (5mm) and all velocities $< 0.01\,\text{m/s}$.
-- [x] **T4.2 - Canonical 5-Stone Pyramid Cairn (Multi-Contact Static Equilibrium)**: Simulates 5 stones (2 base + 2 mid + 1 capstone) via `StonePhysicsBodyFactory.createStoneBody()`; verifies multi-contact balance across 180 frames with resting equilibrium across all tiers.
-- [x] **T4.3 - Intentional Dynamic Tumble Kinematics & Radial Ground Scatter**: Captures dynamic tumble kinematics from `SimpleTowerPhysicsWorld.drop()`; proves peak 3D angular velocity $> 1.5\,\text{rad/s}$ (actual peak $\approx 6.58\,\text{rad/s}$), refuting 2D translation shortcuts, and radial ground scatter $R_{\text{scatter}} > 0.50\,\text{m}$.
-- [x] **T4.4 - 4-Direction Anti-Canned Animation Perturbation Signature Test**: Drops stones at East $(+0.45, 0)$, West $(-0.45, 0)$, North $(0, +0.45)$, South $(0, -0.45)$ via `SimpleTowerPhysicsWorld`; verifies strict directional momentum correlation and all 6 pairwise endpoint distances $> 0.80\,\text{m}$ (actual $\ge 0.90\,\text{m}$).
-- [x] **T4.5 - Dynamic Settling Duration Variance Test**: Measures settling steps for low drop ($h = 0.35\,\text{m}$) vs high drop ($h = 2.5\,\text{m}$) via `SimpleTowerPhysicsWorld.drop()`; verifies settling step count difference $\Delta N_{\text{steps}} > 20$ (actual $\Delta = 36$ steps: 46 vs 82), completely disproving fixed timer mocks (`setTimeout(3000)`).
+##### Area 3: R3 (Main Home SCR-04 Layout Hierarchy & Settings Separation, 7 tests)
+- [x] **T1.13 - Header Layout & Settings Navigation Chip**: Verifies Header contains brand and `[⚙️ 설정]` navigation chip routing to `/settings`.
+- [x] **T1.14 - Category Tabs Under Header**: Verifies Section ① Category Tabs are positioned directly below Header ahead of stats and 3D preview.
+- [x] **T1.15 - Compact Inline Stats Bar**: Verifies bulky card is replaced with compact inline stat row (`돌 1,234 · 오늘 56 · 🌱 78`).
+- [x] **T1.16 - 3D Viewport In-Place Stone Tap**: Verifies tapping stone in canvas opens `WishDetailBottomSheet` (SCR-10) in-place on Home without routing away.
+- [x] **T1.17 - Viewport Clutter Elimination**: Verifies removal of redundant bottom `/tower` banner from 3D viewport.
+- [x] **T1.18 - Wish Feed Report Trigger & Cheer News Banner**: Verifies wish card footer has report `⋯` trigger and cheer news banner renders conditionally.
+- [x] **T1.19 - Settings Isolation (SCR-18)**: Verifies `/settings` contains profile, quota, social link, and withdrawal with clean back navigation to `/home`.
 
----
-
-## 3. Feature Coverage Checklist
-
-| Feature ID | Feature Name | Mapped Tests | Verification Status |
-|---|---|---|:---:|
-| **F01** | 3D Rigid-Body Dynamics & Mass Properties | T1.1, T1.2, T1.6 | **COVERED & PASSING** |
-| **F02** | Ground Plane & Contact Collision Physics | T1.3, T1.4, T1.5 | **COVERED & PASSING** |
-| **F03** | Center of Mass (COM) & Support Polygon | T2.1, T2.2 | **COVERED & PASSING** |
-| **F04** | Natural Dynamic Tower Collapse | T3.2, T4.3 | **COVERED & PASSING** |
-| **F05** | Ground Scattering & Energy Dissipation | T4.3, T4.4 | **COVERED & PASSING** |
-| **F06** | Enhanced PhysicsWorld Port Interface | T3.1, T3.2 | **COVERED & PASSING** |
-| **F07** | Stacking Controller 5-State Lifecycle | T3.3, T3.4 | **COVERED & PASSING** |
-| **F08** | 3D Canvas Mesh Transform Synchronization | T4.1, T4.2 | **COVERED & PASSING** |
-| **F09** | User Placement Flow in `place.tsx` | T3.3 | **COVERED & PASSING** |
-| **F10** | Opaque-Box E2E Test Infra & Runner | `TEST_INFRA.md`, All Tests | **COVERED & PASSING** |
-| **F11** | Tier 1 Feature Coverage Tests | T1.1 – T1.6 | **COVERED & PASSING** |
-| **F12** | Tier 2 Boundary & Corner Case Tests | T2.1 – T2.5 | **COVERED & PASSING** |
-| **F13** | Tier 3 Cross-Feature Combination Tests | T3.1 – T3.4 | **COVERED & PASSING** |
-| **F14** | Tier 4 Real-World & Anti-Canned Tests | T4.1 – T4.5 | **COVERED & PASSING** |
+##### Area 4: R4 (Quality Gates & Runtime Contracts, 5 tests)
+- [x] **T1.20 - Rigid Body Physics Table Immutability**: Verifies all 5 shapes have positive mass, valid half-extents, high friction ($0.75$), and low restitution ($0.08$).
+- [x] **T1.21 - Settled Stone Clearance Contract Across 25 Shape Pairs**: Verifies $\Delta y \ge h_1 + h_2$ produces 0 penetration depth for all pairs $(s_1, s_2)$.
+- [x] **T1.22 - Numerical Stability & NaN/Infinity Protection**: Verifies drag calculation and pose generation sanitize non-finite inputs without crashing.
+- [x] **T1.23 - Visual Effect Bus & Toast Triggers**: Verifies stone stacking emits `stone_stacked` event and shows toast notification.
+- [x] **T1.24 - Navigation Router Cycle Integrity**: Verifies navigation cycle across `/home`, `/stack/place`, `/settings`, and `/tower` preserves route stack.
 
 ---
 
-## 4. Auditor Sign-Off & Verification Readiness
+#### Tier 2: Boundary & Corner Cases (6 tests)
+- [x] **T2.1 - Empty Tower Top Surface Boundary**: Verifies empty tower ($N = 0$) returns `topSurfaceY() = 0.0m` and places first stone safely at half-height.
+- [x] **T2.2 - Extreme Tower Height Boundary (50.0m)**: Verifies drag target elevation and depth convergence remain finite and numerically stable on massive cairns.
+- [x] **T2.3 - Extreme Pointer Drag Coordinates**: Verifies pointer displacement $\pm 5000\text{px}$ clamps progress $[0, 1]$ and produces bounded 3D coordinates.
+- [x] **T2.4 - Multi-Stone Bounding Limits (10-Stone Cairn)**: Verifies sequential stacking of 10 stones maintains monotonic height and zero cumulative clipping across all 9 interfaces.
+- [x] **T2.5 - Extreme Aspect Ratio Stacking**: Verifies stacking tall slender on wide flat and vice versa satisfies anti-clipping elevation.
+- [x] **T2.6 - Downward Drag Reversal**: Verifies dragging below spawn floor clamps progress to $0.0$ and prevents ground penetration.
 
-- [x] Zero facade tests or hardcoded expected outputs.
-- [x] All deliverable classes (`StonePhysicsBodyFactory`, `StabilityEvaluator`, `SimpleTowerPhysicsWorld`) directly imported and tested.
-- [x] Zero isolated Cannon surrogate tests remaining.
-- [x] Zero modifications by test writer to implementation code in `src/infrastructure/` or `src/domain/`.
-- [x] `npx.cmd tsc --noEmit` exits with code 0 (zero TypeScript errors across whole project).
-- [x] `npm.cmd test` passes 38/38 tests (100% green).
+---
+
+#### Tier 3: Cross-Feature Interactions (5 tests)
+- [x] **T3.1 - Drag Interaction + Anti-Clipping Elevation**: Verifies dragging stone to drop zone computes drop pose with zero bounding box collision against tower top surface.
+- [x] **T3.2 - Home Category Switch + 3D Stone Selection**: Verifies switching category tab updates tower scope and opens SCR-10 bottom sheet with correct category badge.
+- [x] **T3.3 - Balance Feedback + Drop Settlement**: Verifies stable drag rating settles safely whereas critical rating predicts unstable tumble.
+- [x] **T3.4 - Home Settings Navigation + Back Return**: Verifies navigating to `/settings` and returning via `router.back()` preserves active category tab.
+- [x] **T3.5 - OrbitControls Suppression During Drag**: Verifies 3D stone drag suppresses camera orbit controls to prevent view tilting during placement.
+
+---
+
+#### Tier 4: Real-World User Scenarios (5 tests)
+- [x] **T4.1 - Journey 1 (End-to-End Stacking)**: Home Dashboard $\to$ Tap CTA $\to$ `/stack/place` $\to$ 3D Drag & Drop $\to$ Verify settled cairn $\to$ Return Home.
+- [x] **T4.2 - Journey 2 (In-Place Stone Inspection & Cheer)**: Home Dashboard $\to$ Tap Stone in 3D Viewport $\to$ Open SCR-10 $\to$ Send Cheer $\to$ Toast notification.
+- [x] **T4.3 - Journey 3 (Settings Isolation & Quota Management)**: Home Dashboard $\to$ Tap `[⚙️ 설정]` $\to$ Enter `/settings` $\to$ Claim quota recharge $\to$ Return to Home.
+- [x] **T4.4 - Journey 4 (Multi-Tier Progressive Cairn Stacking)**: Progressive construction of 4-tier cairn (Boulder $\to$ Round $\to$ Tall $\to$ Pebble) with zero clipping at each tier.
+- [x] **T4.5 - Journey 5 (Critical Balance Recovery & Placement)**: Drag off-center to critical warning $\to$ pull back to stable zone $\to$ release on drop zone safely.
+
+---
+
+## 3. Verification Gate Summary
+
+| Gate Requirement | Command | Result |
+|---|---|---|
+| **Type Check** | `cmd /c "npx tsc --noEmit"` | **0 errors, Exit code 0** |
+| **Milestone 4 E2E Test Suite** | `node --test src/__tests__/e2e-drag-anti-clipping-home.test.ts` | **40 / 40 Passed (100%), ~176ms** |

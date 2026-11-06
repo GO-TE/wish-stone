@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
+import { type TowerStoneItem } from '../domain/entities/Tower.ts';
+import { type WishId } from '../domain/entities/Wish.ts';
+import { type ReportReason } from '../domain/ports/repositories.ts';
 import {
   type CategoryCode,
   TowerKey,
@@ -8,16 +18,23 @@ import {
 import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
 import { CheerSparkEffect } from '../presentation/components/CheerSparkEffect.tsx';
 import { StoneTowerCanvas } from '../presentation/components/StoneTowerCanvas.tsx';
+import { WishDetailBottomSheet } from '../presentation/components/WishDetailBottomSheet.tsx';
 import { type DashboardViewState } from '../presentation/controllers/DashboardController.ts';
 import { TossTheme } from '../presentation/theme/tossTheme.ts';
 
-const TOWER_TABS: readonly { label: string; key: TowerKey }[] = [
+export interface TabItem {
+  readonly label: string;
+  readonly key: TowerKey | 'group_select';
+}
+
+const TOWER_TABS: readonly TabItem[] = [
   { label: '전체', key: TowerKey.global() },
   { label: '취업', key: TowerKey.category('job') },
   { label: '학업', key: TowerKey.category('study') },
   { label: '건강', key: TowerKey.category('health') },
   { label: '인간관계', key: TowerKey.category('relation') },
   { label: '기타', key: TowerKey.category('etc') },
+  { label: '그룹 ▾', key: 'group_select' },
 ];
 
 const CATEGORY_LABELS: Record<CategoryCode, string> = {
@@ -28,12 +45,35 @@ const CATEGORY_LABELS: Record<CategoryCode, string> = {
   etc: '#기타',
 };
 
+const REPORT_REASONS: readonly { reason: ReportReason; label: string }[] = [
+  { reason: 'abuse', label: '욕설 · 비방' },
+  { reason: 'hate', label: '혐오 · 차별 표현' },
+  { reason: 'sexual', label: '음란 · 불건전 내용' },
+  { reason: 'personal_info', label: '타인 개인정보 노출' },
+  { reason: 'spam', label: '도배 · 불법 광고' },
+  { reason: 'etc', label: '기타 부적절한 내용' },
+];
+
+function formatTowerTitle(key: TowerKey): string {
+  if (key.type === 'global') return '전체 소원 돌탑';
+  if (key.type === 'category') {
+    const code = key.value as CategoryCode;
+    const catName = CATEGORY_LABELS[code] ? CATEGORY_LABELS[code].replace('#', '') : key.value;
+    return `${catName} 소원 돌탑`;
+  }
+  return '그룹 소원 돌탑';
+}
+
+export interface HomeScreenProps {
+  readonly initialUnreadCheerCount?: number;
+}
+
 /**
  * SCR-04 대시보드(홈) 화면 (`/home`)
  * Toss-Style Minimal Aesthetic Revamp
  * 근거: 화면 설계서.md 3장 (DB-002~007, 014~017, 022)
  */
-export default function HomeScreen() {
+export default function HomeScreen({ initialUnreadCheerCount }: HomeScreenProps = {}) {
   const router = useRouter();
   const [controller] = useState(
     () => getSharedAppContainer().controllers.dashboard
@@ -42,15 +82,42 @@ export default function HomeScreen() {
     controller.getState()
   );
   const [cardIndex, setCardIndex] = useState(0);
+  const [cheeredWishIds, setCheeredWishIds] = useState<Set<string>>(new Set());
+  const [selectedStone, setSelectedStone] = useState<TowerStoneItem | null>(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [unreadCheerCount, setUnreadCheerCount] = useState<number>(
+    initialUnreadCheerCount ?? 0
+  );
+  const toastStore = getSharedAppContainer().toastStore;
 
   useEffect(() => {
     controller
       .loadDashboard(TowerKey.global())
       .then((next) => setState({ ...next }))
       .catch(() => {});
-  }, [controller]);
 
-  const handleSwitchTab = async (key: TowerKey) => {
+    if (initialUnreadCheerCount !== undefined) {
+      setUnreadCheerCount(initialUnreadCheerCount);
+    } else {
+      getSharedAppContainer()
+        .repositories.wishes.mine()
+        .then((myWishes) => {
+          const totalCheers = myWishes.reduce(
+            (sum, w) => sum + (w.visibleCheerCount ?? 0),
+            0
+          );
+          setUnreadCheerCount(totalCheers);
+        })
+        .catch(() => {});
+    }
+  }, [controller, initialUnreadCheerCount]);
+
+  const handleSwitchTab = async (tab: TabItem) => {
+    if (tab.key === 'group_select') {
+      router.push('/groups');
+      return;
+    }
+    const key = tab.key as TowerKey;
     try {
       await controller.switchTower(key);
       setState({ ...controller.getState() });
@@ -61,13 +128,40 @@ export default function HomeScreen() {
 
   const activeCard = state.randomCards[cardIndex] ?? null;
 
-  const handleCheer = async () => {
+    const handleCheer = async () => {
     if (!activeCard) return;
+    if (cheeredWishIds.has(activeCard.id)) {
+      toastStore.show('info', '이미 응원한 소원입니다 🔥');
+      return;
+    }
+    if (activeCard.isMine) {
+      toastStore.show('info', '내가 작성한 소원입니다 ⛰️');
+      return;
+    }
     try {
       await controller.cheerWish(activeCard);
-      setState({ ...controller.getState() });
-    } catch {
-      // 이미 응원했거나 본인 소원인 경우 무시
+      setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+      toastStore.show('cheer', '따뜻한 응원의 마음을 보냈어요! 🔥');
+      setState({
+        ...controller.getState(),
+        lastEffect: {
+          type: 'cheered',
+          wishId: activeCard.id,
+          level: Math.min(3, (activeCard.cheerLevel().level || 0) + 1) as 0 | 1 | 2 | 3,
+          levelUp: true,
+        },
+      });
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ALREADY_CHEERED')) {
+        setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+        toastStore.show('info', '이미 응원한 소원입니다 🔥');
+      } else if (msg.includes('CANNOT_CHEER_OWN')) {
+        toastStore.show('info', '내가 작성한 소원입니다 ⛰️');
+      } else {
+        setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+        toastStore.show('cheer', '따뜻한 응원의 마음을 보냈어요! 🔥');
+      }
     }
   };
 
@@ -91,6 +185,8 @@ export default function HomeScreen() {
                 pressed && { opacity: 0.7 },
               ]}
               onPress={() => router.push('/groups')}
+              accessibilityLabel="그룹"
+              accessibilityRole="button"
             >
               <Text style={styles.navChipText}>그룹</Text>
             </Pressable>
@@ -100,32 +196,27 @@ export default function HomeScreen() {
                 pressed && { opacity: 0.7 },
               ]}
               onPress={() => router.push('/me/wishes')}
+              accessibilityLabel="내 소원"
+              accessibilityRole="button"
             >
               <Text style={styles.navChipText}>내 소원</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.navChip,
+                styles.settingsNavChip,
+                pressed && { opacity: 0.7 },
+              ]}
+              onPress={() => router.push('/settings')}
+              accessibilityLabel="설정"
+              accessibilityRole="button"
+            >
+              <Text style={styles.navChipText}>⚙️ 설정</Text>
             </Pressable>
           </View>
         </View>
 
-        {/* ① 토스형 통계 헤드라인 카드 */}
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>전체 소원 돌탑</Text>
-          <View style={styles.statRow}>
-            <Text style={styles.statMainNumber}>
-              {state.tower?.stats.stoneCount ?? 0}
-            </Text>
-            <Text style={styles.statUnit}>개의 소원</Text>
-            <View style={styles.badgeToday}>
-              <Text style={styles.badgeTodayText}>
-                오늘 +{state.tower?.stats.todayCount ?? 0}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.statFooterText}>
-            🌱 이뤄진 소원 {state.tower?.stats.fulfilledCount ?? 0}개가 함께 빛나고 있어요
-          </Text>
-        </View>
-
-        {/* ② 카테고리 전환 탭 (Pills) */}
+        {/* Section ①: 돌탑 전환 탭 (Pills) */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -133,13 +224,17 @@ export default function HomeScreen() {
           contentContainerStyle={styles.tabContent}
         >
           {TOWER_TABS.map((tab) => {
+            const isGroupSelect = tab.key === 'group_select';
             const active =
-              state.currentTowerKey.toString() === tab.key.toString();
+              !isGroupSelect &&
+              state.currentTowerKey.toString() === (tab.key as TowerKey).toString();
             return (
               <Pressable
-                key={tab.key.toString()}
+                key={isGroupSelect ? 'group_select' : (tab.key as TowerKey).toString()}
                 style={[styles.tabButton, active && styles.tabButtonActive]}
-                onPress={() => handleSwitchTab(tab.key)}
+                onPress={() => handleSwitchTab(tab)}
+                accessibilityRole="tab"
+                accessibilityLabel={tab.label}
               >
                 <Text style={[styles.tabText, active && styles.tabTextActive]}>
                   {tab.label}
@@ -149,22 +244,54 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {/* ③ 3D 돌탑 프리뷰 뷰포트 */}
+        {/* Section ②: 컴팩트 인라인 통계 바 */}
+        <View style={styles.statsBar}>
+          <Text style={styles.statsBarText}>
+            돌 {(state.tower?.stats.stoneCount ?? 0).toLocaleString()} · 오늘 {(state.tower?.stats.todayCount ?? 0).toLocaleString()} · 🌱 {(state.tower?.stats.fulfilledCount ?? 0).toLocaleString()}
+          </Text>
+        </View>
+
+        {/* Section ③: 3D 돌탑 프리뷰 뷰포트 */}
         <View style={styles.towerViewport}>
           <View style={styles.towerHeader}>
             <Text style={styles.towerTitle}>
-              {state.currentTowerKey.toString()} 돌탑 ({state.tower?.stones.length ?? 0}개)
+              {formatTowerTitle(state.currentTowerKey)} ({state.tower?.stones.length ?? 0}개)
             </Text>
-            <Pressable
-              style={styles.arViewButton}
-              onPress={() => router.push('/stack/ar')}
-            >
-              <Text style={styles.arViewButtonText}>👓 AR 모드</Text>
-            </Pressable>
+            <View style={styles.towerHeaderActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.exploreViewButton,
+                  pressed && { opacity: 0.75 },
+                ]}
+                onPress={() => router.push('/tower')}
+                accessibilityLabel="360° 둘러보기"
+                accessibilityRole="button"
+              >
+                <Text style={styles.exploreViewButtonText}>🔍 360° 둘러보기</Text>
+              </Pressable>
+              <Pressable
+                style={styles.arViewButton}
+                onPress={() => router.push('/stack/ar')}
+                accessibilityLabel="AR로 보기"
+                accessibilityRole="button"
+              >
+                <Text style={styles.arViewButtonText}>AR로 보기</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.canvasContainer}>
-            <StoneTowerCanvas stones={state.tower?.stones ?? []} />
+            <StoneTowerCanvas
+              stones={state.tower?.stones ?? []}
+              enableOrbitControls={true}
+              cameraPreset="front"
+              towerTopY={state.tower?.topY() ?? 1.0}
+              onSelectStone={(stoneId: WishId) => {
+                // SCR-04 in-place modal: previously onSelectStone={() => router.push('/tower')}
+                const found = state.tower?.stones.find((s) => s.id === stoneId) ?? null;
+                setSelectedStone(found);
+              }}
+            />
             <CheerSparkEffect
               event={state.lastEffect}
               towerTopY={state.tower?.topY() ?? 1.0}
@@ -172,7 +299,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ④ 토스형 소원 카드 피드 */}
+        {/* Section ④: 랜덤 익명 소원 카드 피드 */}
         <View style={styles.cardBox}>
           {activeCard ? (
             <>
@@ -186,23 +313,55 @@ export default function HomeScreen() {
               <Text style={styles.cardContent}>"{activeCard.content}"</Text>
 
               <View style={styles.cardFooter}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.cheerButton,
-                    pressed && { transform: [{ scale: 0.97 }] },
-                  ]}
-                  onPress={handleCheer}
-                >
-                  <Text style={styles.cheerButtonText}>
-                    🔥 응원하기 {activeCard.cheerLevel().level > 0 ? `Lv.${activeCard.cheerLevel().level}` : ''}
-                  </Text>
-                </Pressable>
+                <View style={styles.cardFooterLeft}>
+                  {(() => {
+                    const isCheered = cheeredWishIds.has(activeCard.id);
+                    return (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.cheerButton,
+                          isCheered && styles.cheerButtonActive,
+                          pressed && !isCheered && { transform: [{ scale: 0.96 }] },
+                        ]}
+                        onPress={handleCheer}
+                        disabled={isCheered}
+                        accessibilityLabel="응원하기"
+                        accessibilityRole="button"
+                      >
+                        <Text
+                          style={[
+                            styles.cheerButtonText,
+                            isCheered && styles.cheerButtonActiveText,
+                          ]}
+                        >
+                          {isCheered
+                            ? '✓ 응원 완료 🔥'
+                            : `🔥 응원 ${activeCard.cheerLevel().level > 0 ? `Lv.${activeCard.cheerLevel().level}` : ''}`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })()}
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.reportButton,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                    onPress={() => setReportModalVisible(true)}
+                    accessibilityLabel="신고"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.reportButtonText}>⋯</Text>
+                  </Pressable>
+                </View>
 
                 <Pressable
                   style={styles.nextCardButton}
                   onPress={() =>
                     setCardIndex((i) => (i + 1) % state.randomCards.length)
                   }
+                  accessibilityLabel="다음 소원"
+                  accessibilityRole="button"
                 >
                   <Text style={styles.nextCardText}>다음 소원 ▸</Text>
                 </Pressable>
@@ -215,11 +374,29 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* Section ⑤: 조건부 응원 소식 배너 */}
+        {unreadCheerCount > 0 ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.cheerNewsBanner,
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={() => router.push('/me/wishes')}
+            accessibilityLabel="응원 소식"
+            accessibilityRole="button"
+          >
+            <Text style={styles.cheerNewsText}>
+              🔥 내 소원에 새 응원 {unreadCheerCount}개
+            </Text>
+            <Text style={styles.cheerNewsArrow}>›</Text>
+          </Pressable>
+        ) : null}
+
         {/* 여백 확보 */}
         <View style={{ height: 80 }} />
       </ScrollView>
 
-      {/* ⑤ 플로팅 CTA 버튼 (Toss Blue Pill) */}
+      {/* Section ⑥: 플로팅 CTA 버튼 */}
       <View style={styles.floatingButtonContainer}>
         <Pressable
           style={({ pressed }) => [
@@ -227,11 +404,90 @@ export default function HomeScreen() {
             pressed && styles.stackMainButtonPressed,
           ]}
           onPress={() => router.push('/stack/stone')}
+          accessibilityLabel="소원 돌 올리기"
+          accessibilityRole="button"
         >
-          <Text style={styles.stackMainButtonIcon}>⛰️</Text>
+          <Text style={styles.stackMainButtonIcon}>🪨</Text>
           <Text style={styles.stackMainButtonText}>소원 돌 올리기</Text>
         </Pressable>
       </View>
+
+      {/* SCR-10 소원 상세 바텀시트 (In-Place) */}
+      <WishDetailBottomSheet
+        visible={selectedStone !== null}
+        stone={selectedStone}
+        onClose={() => setSelectedStone(null)}
+        onCheer={async (wishId) => {
+          const foundWish = state.randomCards.find((w) => w.id === wishId);
+          if (foundWish) {
+            await handleCheer();
+          } else {
+            await getSharedAppContainer().repositories.wishes.cheer(wishId);
+            setCheeredWishIds((prev) => new Set(prev).add(wishId));
+            toastStore.show('cheer', '따뜻한 응원의 마음을 보냈어요! 🔥');
+          }
+        }}
+        isCheered={selectedStone ? cheeredWishIds.has(selectedStone.id) : false}
+        isGroupTower={state.currentTowerKey.showsNickname()}
+      />
+
+      {/* SCR-11 소원 신고 모달/바텀시트 */}
+      <Modal
+        visible={reportModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>소원 신고하기</Text>
+            <Text style={styles.modalSub}>
+              누적 5회 이상 신고된 소원은 검토를 위해 돌탑과 피드에서 자동으로 숨김 처리됩니다.
+            </Text>
+
+            <View style={styles.reasonList}>
+              {REPORT_REASONS.map((item) => (
+                <Pressable
+                  key={item.reason}
+                  style={({ pressed }) => [
+                    styles.reasonOption,
+                    pressed && styles.reasonOptionPressed,
+                  ]}
+                  onPress={async () => {
+                    if (activeCard) {
+                      try {
+                        await getSharedAppContainer().repositories.wishes.report(
+                          activeCard.id,
+                          item.reason
+                        );
+                        toastStore.show('info', '소원 신고가 접수되었습니다.');
+                      } catch {
+                        toastStore.show('info', '신고 처리 중 오류가 발생했습니다.');
+                      }
+                    }
+                    setReportModalVisible(false);
+                  }}
+                  accessibilityLabel={item.label}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.reasonText}>{item.label}</Text>
+                  <Text style={styles.reasonArrow}>›</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable
+              style={styles.cancelButton}
+              onPress={() => setReportModalVisible(false)}
+              accessibilityLabel="닫기"
+              accessibilityRole="button"
+            >
+              <Text style={styles.cancelText}>닫기</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -287,54 +543,26 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.textSecondary,
     fontWeight: '600',
   },
-  statCard: {
+  settingsNavChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: TossTheme.colors.border,
+  },
+  statsBar: {
     backgroundColor: TossTheme.colors.card,
     borderRadius: TossTheme.radius.card,
-    padding: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statLabel: {
+  statsBarText: {
     ...TossTheme.typography.caption,
-    color: TossTheme.colors.textSecondary,
-    marginBottom: 6,
-  },
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  statMainNumber: {
-    fontSize: 28,
-    fontWeight: '800',
     color: TossTheme.colors.textPrimary,
-    letterSpacing: -0.5,
-  },
-  statUnit: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: TossTheme.colors.primary,
-  },
-  badgeToday: {
-    marginLeft: 'auto',
-    backgroundColor: TossTheme.colors.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: TossTheme.radius.full,
-  },
-  badgeTodayText: {
-    ...TossTheme.typography.micro,
-    color: TossTheme.colors.primary,
     fontWeight: '700',
-  },
-  statFooterText: {
-    ...TossTheme.typography.caption,
-    color: TossTheme.colors.textTertiary,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: TossTheme.colors.border,
+    letterSpacing: -0.2,
   },
   tabBar: {
     marginBottom: 16,
@@ -383,6 +611,24 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.textSecondary,
     fontWeight: '600',
   },
+  towerHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exploreViewButton: {
+    backgroundColor: TossTheme.colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: TossTheme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(49, 130, 246, 0.3)',
+  },
+  exploreViewButtonText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.primary,
+    fontWeight: '700',
+  },
   arViewButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 10,
@@ -400,6 +646,16 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  
+
+  cheerButtonActive: {
+    backgroundColor: 'rgba(255, 146, 43, 0.22)',
+    borderColor: '#FF922B',
+  },
+  cheerButtonActiveText: {
+    color: '#FF922B',
+    fontWeight: '700',
   },
   cardBox: {
     backgroundColor: TossTheme.colors.card,
@@ -438,6 +694,27 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: TossTheme.colors.border,
   },
+  cardFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: TossTheme.radius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: TossTheme.colors.textSecondary,
+    lineHeight: 18,
+  },
   cheerButton: {
     backgroundColor: TossTheme.colors.primarySoft,
     paddingHorizontal: 14,
@@ -462,6 +739,28 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.textTertiary,
     textAlign: 'center',
     paddingVertical: 12,
+  },
+  cheerNewsBanner: {
+    backgroundColor: 'rgba(255, 146, 43, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 146, 43, 0.4)',
+    borderRadius: TossTheme.radius.card,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  cheerNewsText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FF922B',
+  },
+  cheerNewsArrow: {
+    fontSize: 18,
+    color: '#FF922B',
+    fontWeight: '700',
   },
   floatingButtonContainer: {
     position: 'absolute',
@@ -495,5 +794,78 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: TossTheme.colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 36,
+    borderTopWidth: 1,
+    borderColor: TossTheme.colors.border,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: TossTheme.colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: TossTheme.colors.textPrimary,
+    marginBottom: 6,
+  },
+  modalSub: {
+    fontSize: 13,
+    color: TossTheme.colors.textTertiary,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  reasonList: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  reasonOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#1E232A',
+    borderRadius: TossTheme.radius.md,
+    borderWidth: 1,
+    borderColor: TossTheme.colors.border,
+  },
+  reasonOptionPressed: {
+    backgroundColor: '#262D37',
+  },
+  reasonText: {
+    fontSize: 14,
+    color: TossTheme.colors.textPrimary,
+    fontWeight: '600',
+  },
+  reasonArrow: {
+    fontSize: 16,
+    color: TossTheme.colors.textTertiary,
+  },
+  cancelButton: {
+    paddingVertical: 14,
+    borderRadius: TossTheme.radius.md,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  cancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: TossTheme.colors.textSecondary,
   },
 });

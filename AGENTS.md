@@ -5,12 +5,14 @@
 - Analyze the relevant code before modifying the code.
 - Ensure that existing functionality is not affected.
 - Do not add libraries arbitrarily.
+- **Never push directly to `main` branch.** Strictly follow `docs/GIT_BRANCHING_STRATEGY.md`. Always branch from `develop` into `feature/<area>-<name>` and merge via quality gates.
 - Commit changes by logical unit using Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `style:`) whenever a unit of work is completed.
 
 ## At the start of the operation
 1. Read PROJECT_CONTEXT.md.
 2. Read TASKS.md to understand the current progress.
 3. Check DECISIONS.md to review the existing decisions.
+4. Check `docs/GIT_BRANCHING_STRATEGY.md` to ensure working on the appropriate `feature/*` or `develop` branch.
 
 ## At task completion
 1. Update the progress on TASKS.md .

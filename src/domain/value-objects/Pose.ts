@@ -47,10 +47,12 @@ export class Pose {
 
   /**
    * 3회 연속 물리 안착 실패 시 탑 꼭대기에 자동 배치할 위치 계산 (화면 설계서 SCR-08 4단계)
+   * 최상단 물리 표면(topSurfaceY) 위에 새 돌의 밑면이 맞닿도록(flush) 배치 (y = topSurfaceY + newStoneHalfHeight)
+   * 근거: ORIGINAL_REQUEST R2, F03
    */
-  static onTopOf(topY: number, stoneHeight = 0.25): Pose {
+  static onTopOf(topSurfaceY: number, newStoneHalfHeight = 0.25): Pose {
     return new Pose(
-      { x: 0, y: Number((topY + stoneHeight).toFixed(4)), z: 0 },
+      { x: 0, y: Number((topSurfaceY + newStoneHalfHeight).toFixed(4)), z: 0 },
       { qx: 0, qy: 0, qz: 0, qw: 1 }
     );
   }

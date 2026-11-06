@@ -9,19 +9,23 @@ import { type TowerRepository } from '../../domain/ports/repositories.ts';
 import { type BloomType } from '../../domain/value-objects/BloomType.ts';
 import { type CheerLevelValue } from '../../domain/value-objects/CheerLevel.ts';
 import { Pose, type PoseJSON } from '../../domain/value-objects/Pose.ts';
-import { TowerKey } from '../../domain/value-objects/TowerKey.ts';
+import { type CategoryCode, TowerKey } from '../../domain/value-objects/TowerKey.ts';
 import { MsaHttpClient } from './MsaHttpClient.ts';
 
 interface TowerStoneDto {
   id: string;
+  content?: string | null;
+  categoryCode?: CategoryCode | null;
   stoneShape: StoneShape;
   stoneColor: string;
   pose?: PoseJSON | null;
   status: string;
   bloomType: BloomType | null;
+  cheerCount?: number;
   cheerLevel: CheerLevelValue;
   isMine?: boolean;
   nickname: string | null;
+  createdAt?: string;
 }
 
 interface TowerResponseDto {
@@ -61,6 +65,8 @@ export class MsaTowerRepository implements TowerRepository {
       >;
       return {
         id: s.id,
+        content: s.content ?? undefined,
+        category: s.categoryCode ?? undefined,
         stone: new Stone({
           shape: s.stoneShape ?? 'round',
           color: s.stoneColor ?? '#A89F91',
@@ -68,9 +74,11 @@ export class MsaTowerRepository implements TowerRepository {
         }),
         status: normalizedStatus,
         bloom: s.bloomType,
+        cheerCount: s.cheerCount ?? 0,
         cheerLevel: s.cheerLevel ?? 0,
         isMine: s.isMine ?? false,
         nickname: s.nickname,
+        createdAt: s.createdAt ? new Date(s.createdAt) : undefined,
       };
     });
 

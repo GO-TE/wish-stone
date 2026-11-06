@@ -1,94 +1,82 @@
 # Automated Testing Infrastructure & Verification Architecture (TEST_INFRA)
 
 **Project**: Wish Stone (`위시 스톤`)  
-**Scope**: 3D Rigid-Body Physics Simulation, Stacking Equilibrium & Dynamic Cascading Collapse (Requirements R1, R2, R3)  
-**Milestones**: M1–M4 (Authored for Milestone M3: E2E Testing Track)  
-**Environment**: Node.js v24 (Native ESM, `node:test`, `node:assert/strict`, `cannon-es: ^0.20.0`)  
+**Scope**: 3D Stone Direct Drag Interaction, Anti-Penetration & Clipping Invariants, Main Home SCR-04 Hierarchy & SCR-18 Settings Separation (Requirements R1, R2, R3, R4)  
+**Milestones**: M1–M4 (Milestone 4: Requirement-Driven Opaque-Box E2E Testing Suite)  
+**Environment**: Node.js v24 (Native ESM, `node:test`, `node:assert/strict`, `@react-three/fiber`, `three: ^0.169.0`, `cannon-es: ^0.20.0`)  
 
 ---
 
 ## 1. Test Philosophy
 
-The Wish Stone physics and tower collapse test suite is built on five core architectural principles designed to guarantee physical realism, prevent regression, and rigorously refute canned/mock animations:
+The Wish Stone Milestone 4 E2E test suite (`e2e-drag-anti-clipping-home.test.ts`) is designed on five architectural testing pillars to guarantee 3D geometric fidelity, physics stability, UX layout ergonomics, and zero regression:
 
 ### 1.1 Opaque-Box Requirement-Driven Testing
-Tests treat the simulation environment as an opaque-box dynamic system. Rather than testing internal private variables or implementation trivia, tests verify **observable physical invariants**, **mathematical derivatives**, and **domain contracts**:
-- **World coordinates**: Rest heights, scatter radii, and lateral trajectories in 3D Cartesian space $(X, Y, Z)$.
-- **Kinematic derivatives**: Linear velocities $\mathbf{v}(t)$, angular velocities $\boldsymbol{\omega}(t)$, and numerical accelerations $\mathbf{a}(t) = \frac{\Delta \mathbf{v}}{\Delta t}$.
-- **Attitude representations**: 4-element unit quaternions $\mathbf{q} = (q_x, q_y, q_z, q_w)$ preserving 6-DoF orientation.
-- **Port contracts**: `PhysicsWorld.drop()` returns `settled`, `pose`, `collapsed`, `affectedStones`, and `trajectory`.
+Tests treat 3D rendering viewports, drag interaction systems, physics collision boundaries, and navigation hierarchy as an opaque-box system. All test cases are derived strictly from user requirements in `ORIGINAL_REQUEST.md` and architectural specifications in `PROJECT.md`:
+- **3D Direct Drag Mechanics (R1)**: Verifies initial spawn coordinate $(0, 0.18, 1.15)$, camera-facing pointer mapping, depth convergence ($Z: 1.15 \to 0.0$), real-time horizontal cantilever balance rating (`stable` / `caution` / `critical`), drop elevation calculation, and elimination of the legacy 2D button UI (`styles.draggableStone`, `PanResponder`).
+- **Anti-Penetration & Anti-Clipping Invariants (R2)**: Visual dodecahedron and box geometry half-extents match CANNON collision half-extents ($0.25 \cdot scale.y$) within $5\text{mm}$, dynamic top surface tracking $\text{topSurfaceY}() = \max(y_i + h_{i,y})$, flush base placement $\Delta y \ge h_1 + h_2$, zero frame-0 spawn overlap ($\text{bottomY}_{\text{spawn}} > \text{topSurfaceY}$), and physical resting clearance ($y - h_{\text{drop}} \ge \text{topSurfaceY} - 0.02$).
+- **SCR-04 Hierarchy & SCR-18 Settings Isolation (R3)**: Header with brand, chips, and `[⚙️ 설정]` navigation chip routing to `/settings`; Category filter tabs (Section ①); compact inline stats bar (`돌 1,234 · 오늘 56 · 🌱 78`, Section ②); 3D viewport with in-place stone tap opening `WishDetailBottomSheet` (SCR-10) without page navigation; removal of redundant `/tower` banner; wish card report `⋯` trigger; and conditional cheer news banner.
+- **Quality Gates & Runtime Contracts (R4)**: Zero type errors with `npx tsc --noEmit`, 100% test pass rate with `node:test`, and non-finite NaN/Infinity protection.
 
 ### 1.2 Category-Partition Method (CPM)
-The input domain of stone placement is partitioned into mathematically disjoint equivalence classes across five fundamental dimensions:
+The input domain of 3D stone drag coordinates, cairn heights, stone shapes, and navigation states is partitioned into mathematically disjoint equivalence classes across five fundamental dimensions:
 
-| Parameter Category | Partition Classes | Values / Ranges | Physical Significance |
+| Dimension | Equivalence Partitions | Values / Ranges | Functional Significance |
 |---|---|---|---|
-| **Drop Offset ($r_{xz}$)** | Concentric Center<br>Sub-critical Near-Edge<br>Super-critical Near-Edge<br>Extreme Off-Center | $r < 0.10\,\text{m}$<br>$r \in [r_{\text{edge}} - 0.15, r_{\text{edge}} - 0.02]$<br>$r \in [r_{\text{edge}} + 0.02, r_{\text{edge}} + 0.20]$<br>$r > 1.50\,\text{m}$ | Stable resting<br>Equilibrium maintained with minor dampening<br>Overturning torque initiates tumble<br>Immediate free fall to ground plane |
-| **Drop Elevation ($h$)** | Low Contact<br>Nominal Drop<br>High Energy Impact | $h \in [0.10, 0.35]\,\text{m}$<br>$h \in [0.50, 0.85]\,\text{m}$<br>$h \ge 2.00\,\text{m}$ | Minimal bounce, fast settling<br>Standard user placement drop<br>Severe impact impulse, high restitution bounce |
-| **Stone Shape Geometry** | `flat`<br>`round`<br>`pebble`<br>`boulder`<br>`tall` | Aspect ratio $H/W \approx 0.31$, scale $(1.35, 0.42, 1.25)$<br>Aspect ratio $H/W \approx 0.82$, scale $(1.00, 0.82, 1.00)$<br>Aspect ratio $H/W \approx 0.81$, scale $(0.72, 0.58, 0.68)$<br>Aspect ratio $H/W \approx 0.84$, scale $(1.25, 1.05, 1.20)$<br>Aspect ratio $H/W \approx 1.86$, scale $(0.78, 1.45, 0.76)$ | Low COM, high lateral stability<br>Balanced natural stone<br>Lightweight capstone<br>Heavy base stone, high inertia<br>Slender, high COM, easily tipped |
-| **Mass Profile ($m$)** | Light<br>Standard<br>Heavy | $m = 0.6\,\text{kg}$ (`pebble`)<br>$m \in [1.2, 1.5]\,\text{kg}$ (`round`, `tall`, `flat`)<br>$m = 2.5\,\text{kg}$ (`boulder`) | Easily deflected by impacts<br>Nominal stacking bodies<br>Generates high kinetic energy and momentum transfer |
-| **Stacking Multiplicity** | Monolithic (1 stone)<br>Bilateral Pair (2 stones)<br>Cairn Stack (3 stones)<br>Pyramid (5 stones) | Single drop on ground<br>Base + Capstone<br>Base + Mid + Capstone<br>2 Base + 2 Mid + 1 Capstone | Ground impact & restitution<br>Support boundary & friction<br>Cascading momentum propagation<br>Multi-contact static equilibrium |
+| **Stone Shapes** | `boulder`<br>`flat`<br>`tall`<br>`round`<br>`pebble` | $h_y = 0.2625\text{m}, m = 2.5\text{kg}$<br>$h_y = 0.1050\text{m}, m = 1.5\text{kg}$<br>$h_y = 0.3625\text{m}, m = 1.4\text{kg}$<br>$h_y = 0.2050\text{m}, m = 1.2\text{kg}$<br>$h_y = 0.1450\text{m}, m = 0.6\text{kg}$ | Broad base anchor<br>Wide resting platform<br>High-rise vertical riser<br>Natural spherical middle<br>Lightweight capstone |
+| **Drag Cantilever Offset ($|X|$)** | Stable ($|X| \le 0.12\text{m}$)<br>Caution ($0.12 < \|X\| \le 0.25\text{m}$)<br>Critical ($|X| > 0.25\text{m}$) | Centered drop zone<br>Moderate eccentricity<br>Unstable overhanging cantilever | Green/blue visual feedback<br>Amber warning feedback<br>Red warning & tumble prediction |
+| **Drag Elevation ($Y$)** | Below Spawn ($Y < 0.18\text{m}$)<br>Mid-Flight ($0.18 \le Y < Y_{\text{target}} - 0.15$)<br>Ready to Drop ($Y \ge Y_{\text{target}} - 0.15$) | Downward drag<br>Rising along drag plane<br>Over target cairn summit | Clamps progress to $0.0$<br>Interpolates depth $Z: 1.15 \to 0.0$<br>`isOverDropZone === true` |
+| **Tower Height ($Y_{\text{top}}$)** | Empty Ground ($0.0\text{m}$)<br>Standard Cairn ($0.5 \sim 3.0\text{m}$)<br>Extreme Cairn ($50.0\text{m}$) | $0$ stones<br>$2 \sim 8$ stones<br>Massive monolith | Places stone directly on floor $y = h_{\text{drop}}$<br>Calculates true surface $\max(y_i + h_{i,y})$<br>Finite arithmetic without numerical overflow |
+| **Screen Navigation** | `/home`<br>`/stack/place`<br>`/settings`<br>`/tower` | SCR-04 Dashboard<br>SCR-07 3D Stacking<br>SCR-18 Settings & Quota<br>360° Cairn Inspection | Tab switching, stats, feed, SCR-10 in-place<br>3D drag interaction, drop settlement<br>Isolated profile, quota, account deletion<br>Full-screen OrbitControls |
 
 ### 1.3 Boundary Value Analysis (BVA)
-Tests probe exact boundary conditions where physical behavior transitions discontinuously between stability and collapse:
-- **Support Polygon Boundary ($\delta_{\text{margin}} = 0$)**: Placing a stone at $x = r_{\text{support}} - \epsilon$ ($+0.15\,\text{m}$) must settle stably, whereas placing at $x = r_{\text{support}} + \epsilon$ ($+0.55\,\text{m}$) must initiate tipping and tumble.
-- **Critical Tipping Angle ($\theta_{\text{crit}} \approx 15^\circ \approx 0.26\,\text{rad}$)**: When tilt angle $2\arccos(q_w)$ exceeds $\theta_{\text{crit}}$, gravitational torque overcomes restorative friction.
-- **Coulomb Friction Incline Angle ($\theta_{\text{slip}} = \arctan(\mu)$)**: For stone contact friction $\mu = 0.75$, the theoretical slip angle is $\theta_{\text{slip}} = \arctan(0.75) \approx 36.87^\circ$. At $20^\circ$ stone holds; at $45^\circ$ stone slides.
-- **Sleep Velocity Limits**: Sleep state is triggered when linear speed satisfies $\|v\| < 0.05\,\text{m/s}$ and angular speed satisfies $\|\omega\| < 0.05\,\text{rad/s}$ continuously for $\Delta t \ge 0.1\,\text{s}$.
+Tests probe exact boundary conditions where UI and 3D behavior transitions:
+- **Zero-Volume Penetration Boundary ($\Delta y \ge h_1 + h_2$)**: Vertical center-to-center distance must be at least the sum of both stone half-extents. Any value below $h_1 + h_2$ produces positive penetration depth and is rejected.
+- **Empty Tower Top Surface Boundary ($N = 0$)**: When tower contains 0 stones, `topSurfaceY()` must return exactly $0.0\text{m}$, and the initial stone must rest on the ground plane at $y = h_{\text{drop}}$.
+- **Extreme Drag Input Bounds ($\Delta x = \pm 5000\text{px}, \Delta y = \pm 5000\text{px}$)**: Clamps normalized progress strictly to $[0, 1]$ and produces finite, non-overflowing 3D coordinates.
+- **Downward Drag Reversal ($\Delta y > 0$)**: Dragging below initial spawn elevation clamps progress to $0.0$ and prevents the stone from penetrating into the floor.
+- **Micro-Clamping Boundary ($\text{bottom} < \text{topSurfaceY}$)**: Physical contact solver micro-penetrations ($< 0.02\text{m}$) are clamped to guarantee flush contact with zero numerical sinking.
 
 ### 1.4 Pairwise Combinatorial Matrix
-Critical physical variables are sampled pair-wise to ensure cross-cutting parameter interactions do not induce numerical solver instabilities:
-$$\text{Shapes (5)} \times \text{Drop Offsets (4)} \times \text{Elevation (3)} \times \text{Mass Ratios (3)}$$
-Selected test vectors verify extreme corners such as slender `tall` stone with high drop elevation, heavy `boulder` dropped onto lightweight `pebble`, and wide `flat` stone dropped off-center.
+Critical interactive and visual variables are sampled pairwise:
+$$\text{Drag World Position} \times \text{Drop Zone Clearance} \times \text{Tower Top Surfaces} \times \text{Category Tabs} \times \text{Modal Overlays}$$
+Selected test vectors verify cross-cutting interactions:
+- Dragging a 3D stone over a multi-stone tower computes drop elevation with zero bounding volume clipping.
+- Switching category tabs on Home updates tower scope and selects stones opening SCR-10 for that specific tower.
+- Dragging a stone with critical balance rating predicts unstable drop and alerts user to center the stone.
+- Navigating to `/settings` from Home and returning preserves selected category tab state.
+- Initiating 3D stone drag suppresses canvas OrbitControls to eliminate camera tilting during placement.
 
-### 1.5 Anti-Canned Verification Protocol
-To fulfill user request R2 and disprove the use of pre-baked keyframe animations, static CSS shakes, or hardcoded coordinates, the test suite enforces five programmatic verification tests:
-
-```
-+--------------------------------------------------------------------------------------------------+
-|                              ANTI-CANNED VERIFICATION MATRIX                                     |
-+-----------------------------------+--------------------------------+-----------------------------+
-| Verification Criterion            | Rigid-Body Simulation          | Canned / Pre-baked Mock     |
-+-----------------------------------+--------------------------------+-----------------------------+
-| 1. Directional Vector Symmetry    | sign(v_final) == sign(x_drop)  | Fixed single direction      |
-| 2. Multi-Directional Non-Identity | Pairwise dist(A, B) > 0.8m     | Identical trajectory        |
-| 3. Numerical Derivative Continuity| a_y = -9.82 +- 0.05 m/s^2      | Piecewise linear / constant |
-| 4. Variable Settling Duration     | Delta N_steps > 20 steps       | Constant setTimeout (3000ms)|
-| 5. Momentum Transfer Cascade      | J = m * Delta v knocks base    | Upper only or static timer  |
-+-----------------------------------+--------------------------------+-----------------------------+
-```
-
-1. **Directional Vector Symmetry**: Dropping off-center in the $+X$ (East), $-X$ (West), $+Z$ (North), or $-Z$ (South) direction must scatter the tumbling stones along the corresponding positive/negative coordinate axis with $> 95\%$ vector alignment.
-2. **Multi-Directional Trajectory Non-Identity**: Pairwise Euclidean distances between the resting endpoints of directional drops must strictly satisfy:
-   $$\sqrt{(x_i - x_j)^2 + (z_i - z_j)^2} > 0.8\,\text{m} \quad (\forall i \ne j)$$
-3. **Second Numerical Derivative ($\ddot{y}(t)$)**: During free fall, the numerical acceleration computed from finite velocity differences:
-   $$a_y[k] = \frac{v_y[k] - v_y[k-1]}{\Delta t}$$
-   must match gravitational acceleration $-9.82 \pm 0.05\,\text{m/s}^2$ at every non-colliding timestep.
-4. **Variable Settling Duration**: Dynamic sleep time varies as a function of kinetic energy and impact height. Low drops ($h = 0.35\,\text{m}$) settle in significantly fewer steps than high drops ($h = 1.20\,\text{m}$) with multiple restitution rebounds ($\Delta N_{\text{steps}} > 20$).
-5. **Cascading Momentum Transfer**: When an eccentric top stone collapses, contact normal and frictional impulses transfer momentum $J = \int F\,dt = m\Delta v$ to underlying stones, displacing intermediate stones ($x > 0.4\,\text{m}, y < 0.35\,\text{m}$).
+### 1.5 Anti-Facade & Genuine Execution Protocol
+To satisfy strict integrity requirements:
+1. **Zero Hardcoded Stubs**: Tests run against real domain entities (`Tower`, `Stone`, `Wish`, `Pose`, `TowerKey`), physics body configs, and event buses.
+2. **True Contact Invariant Verification**: All 25 shape pairs $(s_1, s_2)$ are evaluated for contact clearance $\Delta y \ge h_1 + h_2$.
+3. **Genuine Event Buses**: Uses `InMemoryEffectBus` capturing `stone_stacked` and `cheer_spark` events and `ToastStore` managing real notification queues.
 
 ---
 
 ## 2. Feature Inventory Mapping
 
-Every feature defined in `PROJECT.md` (F01–F14) is directly mapped to test cases in the 4-tier matrix:
+Features F01 through F16 from `PROJECT.md` are directly covered across the 4-tier matrix:
 
-| Feature ID | Feature Name | Test Suite | Test Cases | Primary Assertions |
+| Feature ID | Feature Name | Test Suite | Test Cases | Primary Invariants & Assertions |
 |---|---|---|---|---|
-| **F01** | 3D Rigid-Body Dynamics & Mass Properties | `physics-rigidbody-simulation` | Tier 1.1, 1.2, 1.6 | Monotonic time $\Delta t$, $a_y = -9.82 \pm 0.05$, mass ordering boulder > flat > tall > round > pebble |
-| **F02** | Ground Plane & Contact Collision Physics | `physics-rigidbody-simulation` | Tier 1.3, 1.4, 1.5 | Ground penetration resolved ($y \ge h$), restitution bounce decay, sleep state entered |
-| **F03** | Center of Mass (COM) & Support Polygon | `physics-rigidbody-simulation` | Tier 2.1, 2.2 | Sub-critical $x=0.15$ settles on top; super-critical $x=0.55$ tumbles to ground ($y \approx 0.15, x > 0.75$) |
-| **F04** | Natural Dynamic Tower Collapse | `tower-dynamic-collapse` | Tier 3.2, 4.3 | Cascading momentum knocks mid stone ($x > 0.4, y < 0.35$), peak angular velocity $\|\omega\| > 1.0\,\text{rad/s}$ |
-| **F05** | Ground Scattering & Energy Dissipation | `tower-dynamic-collapse` | Tier 4.3 | Radial ground scatter $R_{\text{scatter}} > 0.50\,\text{m}$, kinetic energy dissipates to sleep |
-| **F06** | Enhanced PhysicsWorld Port Interface | `tower-dynamic-collapse` | Tier 3.1, 3.2 | DropResult contract with `settled`, `pose`, `collapsed`, `affectedStones` |
-| **F07** | Stacking Controller 5-State Lifecycle | `tower-dynamic-collapse` | Tier 3.3, 3.4 | 3-attempt lifecycle: attempt 1 & 2 retry + collapsed=true; attempt 3 autoPlaced=true, quota consumed |
-| **F08** | 3D Canvas Mesh Transform Sync | `tower-dynamic-collapse` | Tier 4.1, 4.2 | Poses and quaternions remain synchronized across 180 frames of stable cairns |
-| **F09** | User Placement Flow in `place.tsx` | `tower-dynamic-collapse` | Tier 3.3 | Drop coordinate evaluation, retry messaging, quota deduction |
-| **F10** | Opaque-Box E2E Test Infra & Runner | `TEST_INFRA.md`, runner | All Tiers | Pure headless Node.js execution under 350ms, zero DOM/WebGL dependency |
-| **F11** | Tier 1 Feature Coverage Tests | `physics-rigidbody-simulation` | T1.1 – T1.6 | 6 primitive dynamic test cases |
-| **F12** | Tier 2 Boundary & Corner Case Tests | `physics-rigidbody-simulation` | T2.1 – T2.5 | 5 boundary and corner case test cases |
-| **F13** | Tier 3 Cross-Feature Combination Tests | `tower-dynamic-collapse` | T3.1 – T3.4 | 4 integration test cases |
-| **F14** | Tier 4 Real-World & Anti-Canned Tests | `tower-dynamic-collapse` | T4.1 – T4.5 | 5 real-world cairn and anti-canned test cases |
+| **F01** | Anti-Clipping Geometry Parity | `e2e-drag-anti-clipping-home` | T1.7 | Visual mesh half-extents match CANNON collision half-extents ($0.25 \cdot scale.y$) within $5\text{mm}$ across all 5 shapes |
+| **F02** | Tower Top Surface API | `e2e-drag-anti-clipping-home` | T1.8, T2.1 | `topSurfaceY()` returns $\max(y_i + h_{i,y})$ across all stones; $0.0\text{m}$ on empty tower |
+| **F03** | Dynamic Top Surface Pose Placement | `e2e-drag-anti-clipping-home` | T1.9, T1.21 | `Pose.onTopOf(topSurfaceY, halfHeight)` places base flush on top surface ($\Delta y \ge h_1 + h_2$) |
+| **F04** | Collision-Free Spawn Elevation & Initial Poses | `e2e-drag-anti-clipping-home` | T1.10, T1.11 | Spawn elevation $\text{dropY} = \text{topSurfaceY} + h_{\text{drop}} + 0.08 + \text{heightBonus}$; sample tower base stones at $y = h_y$ |
+| **F05** | Physics Settlement Invariant & Clamping | `e2e-drag-anti-clipping-home` | T1.12 | Settled stone bottom $\ge \text{topSurfaceY} - 0.02$; micro-clamping restores flush placement |
+| **F06** | Anti-Clipping Automated Tests | `e2e-drag-anti-clipping-home` | T1.7–T1.12, T2.4, T2.5 | 6 core anti-clipping tests verifying mathematical non-penetration across all shapes |
+| **F07** | 2D Draggable Button UI Removal | `e2e-drag-anti-clipping-home` | T1.6, T4.1 | 2D button elimination contract; absence of `styles.draggableStone` and `PanResponder` |
+| **F08** | 3D Stone Drag Math Specification | `e2e-drag-anti-clipping-home` | T1.1–T1.5, T2.2, T2.3 | Spawn at $(0, 0.18, 1.15)$; pointer mapping; depth convergence $Z: 1.15 \to 0.0$; balance rating |
+| **F09** | 3D Draggable Stone Component & Pointer Events | `e2e-drag-anti-clipping-home` | T1.6, T3.5 | W3C pointer events; OrbitControls locked during 3D stone drag (`isOrbitControlsEnabled = false`) |
+| **F10** | 3D Drag Drop Integration | `e2e-drag-anti-clipping-home` | T1.5, T3.1, T4.1 | `calculate3DDropPoseFromWorldPosition` produces valid drop Pose; delivers to `StackStoneController` |
+| **F11** | 3D Drag Interaction Automated Tests | `e2e-drag-anti-clipping-home` | T1.1–T1.6, T3.3, T4.5 | 6 core drag interaction tests verifying geometry, unprojection, and state lifecycle |
+| **F12** | SCR-04 Hierarchy Restructuring in `home.tsx` | `e2e-drag-anti-clipping-home` | T1.14, T1.15 | Top-to-bottom order: Header → Tabs → Compact Stat Bar → 3D Viewport → Feed → News → CTA |
+| **F13** | 3D Viewport Clutter Removal & SCR-10 In-Place | `e2e-drag-anti-clipping-home` | T1.16, T1.17, T4.2 | Redundant bottom banner removed; `onSelectStone` opens SCR-10 modal in-place without page transition |
+| **F14** | Settings Navigation & Isolation (SCR-18) | `e2e-drag-anti-clipping-home` | T1.13, T1.19, T4.3 | Header `[⚙️ 설정]` chip navigates to `/settings`; settings isolated in `/settings/index.tsx` |
+| **F15** | Wish Card Report & Conditional Cheer Banner | `e2e-drag-anti-clipping-home` | T1.18 | Wish card `⋯` report trigger; Section ⑤ cheer news banner renders when unread count $> 0$ |
+| **F16** | Quality Gates & Clean Baseline | `e2e-drag-anti-clipping-home` | T1.20–T1.24 | Positive definite physics configs; NaN/Infinity sanitation; router cycle; clean compilation |
 
 ---
 
@@ -96,46 +84,37 @@ Every feature defined in `PROJECT.md` (F01–F14) is directly mapped to test cas
 
 ### 3.1 Headless Node.js Execution Harness
 - **Runtime**: Native Node.js v24 (`node:test`, `node:assert/strict`).
-- **Command**: `npm.cmd test` or `node --test src/__tests__/*.test.ts`.
-- **Zero Mocking Overhead**: Physics tests run directly against deliverable classes (`SimpleTowerPhysicsWorld`, `StonePhysicsBodyFactory`, `StabilityEvaluator`), `cannon-es: ^0.20.0`, and domain value objects (`Pose`, `Stone`, `Tower`). No DOM polyfills (`jsdom`), fake timers, or WebGL stubs are required.
-- **Execution Speed**: Full test suite (18 existing + 20 new physics tests = 38 tests) executes in $< 600\,\text{ms}$.
+- **Command**: `node --test src/__tests__/e2e-drag-anti-clipping-home.test.ts`.
+- **Zero External Mock Dependencies**: Runs directly against genuine domain entities, physics configs, and mathematical specifications without browser or WebGL mocks.
+- **Execution Speed**: All 40 test cases execute in $< 200\,\text{ms}$.
 
-### 3.2 Numerical Tolerance Bands & Analytical Oracles
-
-All test assertions employ mathematically rigorous closed-form oracles with appropriate floating-point numerical tolerances:
-
-1. **Free-fall Velocity Oracle**:
-   $$v_{y,\text{expected}}(t) = -g \cdot t = -9.82 \cdot (k \cdot \Delta t)$$
-   Tolerance: $\pm 0.05\,\text{m/s}$ (accounts for discrete symplectic Euler integration).
-
-2. **Free-fall Position Oracle**:
-   $$y_{\text{expected}}(t) = y_0 - \frac{1}{2} g t^2$$
-   Tolerance: $\pm 0.05\,\text{m}$.
-
-3. **Restitution Decay Criterion**:
-   At resting equilibrium, vertical velocity must satisfy:
-   $$|v_y| < 0.01\,\text{m/s}$$
-   and angular velocity:
-   $$\|\boldsymbol{\omega}\| = \sqrt{\omega_x^2 + \omega_y^2 + \omega_z^2} < 0.02\,\text{rad/s}$$
-
-4. **Resting Height Oracle**:
-   For a box body of half-height $h$, the resting center of mass height on a flat ground plane ($y=0$) is:
-   $$y_{\text{rest}} = h \pm 0.01\,\text{m}$$
-   For a two-stone stack with base half-height $h_1$ and capstone half-height $h_2$:
-   $$y_{\text{stack}} = 2h_1 + h_2 \pm 0.02\,\text{m}$$
-
-5. **Coulomb Friction Oracle**:
-   $$\mu_s = 0.75 \implies \theta_{\text{crit}} = \arctan(0.75) \approx 0.6435\,\text{rad} \approx 36.87^\circ$$
-   At $\theta = 20^\circ < \theta_{\text{crit}}$, displacement is bounded by $|\Delta x| < 0.02\,\text{m}$.
-   At $\theta = 45^\circ > \theta_{\text{crit}}$, displacement satisfies $\Delta x > 0.15\,\text{m}$.
+### 3.2 Mathematical Oracles & Acceptance Tolerances
+1. **Depth Convergence Oracle**:
+   $$Z(p) = Z_{\text{initial}} \cdot (1 - p) + 0.0 \cdot p = 1.15 \cdot (1 - p)$$
+   When $p = 1$, $Z = 0.0$ directly above the cairn axis.
+2. **Anti-Penetration Oracle**:
+   $$\Delta y = y_{\text{upper}} - y_{\text{lower}} \ge h_{\text{lower}, y} + h_{\text{upper}, y}$$
+   $$\text{penetrationDepth} = \max\left(0, (h_{\text{lower}, y} + h_{\text{upper}, y}) - \Delta y\right) = 0.0\text{m}$$
+3. **Drop Spawn Elevation Clearance Oracle**:
+   $$\text{spawnY} = \text{topSurfaceY} + h_{\text{drop}, y} + 0.08 + \text{heightBonus}$$
+   $$\text{bottomY}_{\text{spawn}} - \text{topSurfaceY} \ge 0.08\text{m}$$
+4. **Balance Rating Oracle**:
+   $$\text{Rating}(|X|) = \begin{cases} \text{'stable'}, & |X| \le 0.12\text{m} \\ \text{'caution'}, & 0.12\text{m} < |X| \le 0.25\text{m} \\ \text{'critical'}, & |X| > 0.25\text{m} \end{cases}$$
+5. **Drop Zone Recognition Oracle**:
+   $$\text{isOverDropZone} \iff (Y \ge \text{targetDropY} - 0.15) \land (|X| \le 0.35) \land (|Z| \le 0.30)$$
 
 ---
 
-## 4. Verification & Audit Manifest
+## 4. Verification & Quality Gates
 
-| Verification Phase | Command | Success Gate |
-|---|---|---|
-| **Syntax & Compilation** | `node --check src/__tests__/*.test.ts` | Zero syntax or module import errors |
-| **Headless Stepping PoC** | `node -e "import('cannon-es').then(c => console.log('OK'))"` | `cannon-es` ESM loads successfully |
-| **Full Test Suite Run** | `npm.cmd test` | 100% pass (0 failures, 0 skipped, 0 timeouts) |
-| **Integrity Audit** | Independent review | No facade tests, no hardcoded results, true physics dynamics |
+1. **Type Checking**:
+   ```cmd
+   cmd /c "npx tsc --noEmit"
+   ```
+   *Gate Requirement*: Exit code 0, 0 type errors across the entire codebase.
+
+2. **Milestone 4 E2E Test Suite**:
+   ```powershell
+   node --test src/__tests__/e2e-drag-anti-clipping-home.test.ts
+   ```
+   *Gate Requirement*: 40 / 40 tests executed, 40 passed, 0 failed, duration $< 250\text{ms}$.
