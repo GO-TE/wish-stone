@@ -87,63 +87,23 @@ export default function PlaceStone3DScreen() {
     });
   }, [controller]);
 
-  // Default sample tower fallback - no overlap in 3D (base-1 at y=0.2625, base-2 at y=0.105, base-3 on top at y=0.730)
+  // Active tower state: defaults to empty tower, loads real stones from repository
   const [activeTower, setActiveTower] = useState<Tower>(() => {
     return new Tower(
       controller.getState().scope ?? TowerKey.global(),
-      [
-        {
-          id: 'base-1',
-          stone: new Stone({
-            shape: 'boulder',
-            color: '#3E4947',
-            pose: new Pose({ x: -0.34, y: 0.2625, z: 0 }),
-          }),
-          status: 'active',
-          bloom: null,
-          cheerLevel: 1,
-          isMine: false,
-          nickname: null,
-        },
-        {
-          id: 'base-2',
-          stone: new Stone({
-            shape: 'flat',
-            color: '#262930',
-            pose: new Pose({ x: 0.34, y: 0.105, z: 0 }),
-          }),
-          status: 'active',
-          bloom: null,
-          cheerLevel: 2,
-          isMine: false,
-          nickname: null,
-        },
-        {
-          id: 'base-3',
-          stone: new Stone({
-            shape: 'round',
-            color: '#6E675F',
-            pose: new Pose({ x: 0, y: 0.730, z: 0 }),
-          }),
-          status: 'active',
-          bloom: 'sprout',
-          cheerLevel: 3,
-          isMine: false,
-          nickname: null,
-        },
-      ],
-      { stoneCount: 15, todayCount: 3, fulfilledCount: 1, cheerCount: 42 }
+      [],
+      { stoneCount: 0, todayCount: 0, fulfilledCount: 0, cheerCount: 0 }
     );
   });
 
-  // Load real tower if available
+  // Load real tower from repository
   useEffect(() => {
     const container = getSharedAppContainer();
     const scope = controller.getState().scope ?? TowerKey.global();
     container.repositories.towers
       .get(scope, 50)
       .then((tower) => {
-        if (tower && tower.stones.length > 0) {
+        if (tower) {
           setActiveTower(tower);
         }
       })
