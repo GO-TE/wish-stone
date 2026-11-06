@@ -29,6 +29,21 @@ export class MsaAuthService implements AuthService {
 
   constructor(http: MsaHttpClient) {
     this.http = http;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('stonewish_auth_profile');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          this.currentProfile = {
+            id: parsed.id,
+            nickname: parsed.nickname ? new Nickname(parsed.nickname, parsed.tag) : null,
+            isGuest: parsed.isGuest ?? true,
+          };
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
   }
 
   async signIn(provider: AuthProvider): Promise<AuthSession> {
@@ -77,18 +92,25 @@ export class MsaAuthService implements AuthService {
       isGuest: res.isGuest,
     };
     this.currentProfile = updated;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('stonewish_auth_profile', JSON.stringify({ id: updated.id, nickname: updated.nickname?.displayName ?? null, tag: updated.nickname?.tag ?? null, isGuest: updated.isGuest }));
+      } catch {}
+    }
     return updated;
   }
 
   async signOut(): Promise<void> {
     this.http.setAccessToken(null);
     this.currentProfile = null;
+    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('stonewish_auth_profile'); } catch {} }
   }
 
   async deleteAccount(): Promise<void> {
     await this.http.request('DELETE', '/api/v1/users/me');
     this.http.setAccessToken(null);
     this.currentProfile = null;
+    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('stonewish_auth_profile'); } catch {} }
   }
 
   currentUser(): UserProfile | null {
@@ -106,6 +128,11 @@ export class MsaAuthService implements AuthService {
       isGuest: dto.user.isGuest,
     };
     this.currentProfile = profile;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('stonewish_auth_profile', JSON.stringify({ id: profile.id, nickname: rawNick ?? null, tag: dto.user.tag ?? null, isGuest: profile.isGuest }));
+      } catch {}
+    }
     return {
       accessToken: dto.accessToken,
       user: profile,
