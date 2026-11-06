@@ -42,6 +42,8 @@ export default function HomeScreen() {
     controller.getState()
   );
   const [cardIndex, setCardIndex] = useState(0);
+  const [cheeredWishIds, setCheeredWishIds] = useState<Set<string>>(new Set());
+  const toastStore = getSharedAppContainer().toastStore;
 
   useEffect(() => {
     controller
@@ -61,13 +63,40 @@ export default function HomeScreen() {
 
   const activeCard = state.randomCards[cardIndex] ?? null;
 
-  const handleCheer = async () => {
+    const handleCheer = async () => {
     if (!activeCard) return;
+    if (cheeredWishIds.has(activeCard.id)) {
+      toastStore.show('info', '이미 응원한 소원입니다 🔥');
+      return;
+    }
+    if (activeCard.isMine) {
+      toastStore.show('info', '내가 작성한 소원입니다 ⛰️');
+      return;
+    }
     try {
       await controller.cheerWish(activeCard);
-      setState({ ...controller.getState() });
-    } catch {
-      // 이미 응원했거나 본인 소원인 경우 무시
+      setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+      toastStore.show('cheer', '따뜻한 응원의 마음을 보냈어요! 🔥');
+      setState({
+        ...controller.getState(),
+        lastEffect: {
+          type: 'cheered',
+          wishId: activeCard.id,
+          level: Math.min(3, (activeCard.cheerLevel().level || 0) + 1) as 0 | 1 | 2 | 3,
+          levelUp: true,
+        },
+      });
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ALREADY_CHEERED')) {
+        setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+        toastStore.show('info', '이미 응원한 소원입니다 🔥');
+      } else if (msg.includes('CANNOT_CHEER_OWN')) {
+        toastStore.show('info', '내가 작성한 소원입니다 ⛰️');
+      } else {
+        setCheeredWishIds((prev) => new Set(prev).add(activeCard.id));
+        toastStore.show('cheer', '따뜻한 응원의 마음을 보냈어요! 🔥');
+      }
     }
   };
 
@@ -175,19 +204,27 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <Pressable
-            style={styles.canvasContainer}
-            onPress={() => router.push('/tower')}
-            accessibilityLabel="3D 돌탑 둘러보기로 이동"
-          >
+          <View style={styles.canvasContainer}>
             <StoneTowerCanvas
               stones={state.tower?.stones ?? []}
+              enableOrbitControls={true}
+              cameraPreset="front"
+              towerTopY={state.tower?.topY() ?? 1.0}
               onSelectStone={() => router.push('/tower')}
             />
             <CheerSparkEffect
               event={state.lastEffect}
               towerTopY={state.tower?.topY() ?? 1.0}
             />
+          </View>
+          <Pressable
+            style={styles.exploreBannerButton}
+            onPress={() => router.push('/tower')}
+            accessibilityLabel="360° 둘러보기 페이지로 이동"
+          >
+            <Text style={styles.exploreBannerButtonText}>
+              🔍 360° 둘러보기 페이지에서 소원 구경하기 ▸
+            </Text>
           </Pressable>
         </View>
 
@@ -205,17 +242,26 @@ export default function HomeScreen() {
               <Text style={styles.cardContent}>"{activeCard.content}"</Text>
 
               <View style={styles.cardFooter}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.cheerButton,
-                    pressed && { transform: [{ scale: 0.97 }] },
-                  ]}
-                  onPress={handleCheer}
-                >
-                  <Text style={styles.cheerButtonText}>
-                    🔥 응원하기 {activeCard.cheerLevel().level > 0 ? `Lv.${activeCard.cheerLevel().level}` : ''}
-                  </Text>
-                </Pressable>
+                {(() => {
+                  const isCheered = cheeredWishIds.has(activeCard.id);
+                  return (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.cheerButton,
+                        isCheered && styles.cheerButtonActive,
+                        pressed && !isCheered && { transform: [{ scale: 0.96 }] },
+                      ]}
+                      onPress={handleCheer}
+                      disabled={isCheered}
+                    >
+                      <Text style={[styles.cheerButtonText, isCheered && styles.cheerButtonActiveText]}>
+                        {isCheered
+                          ? '✓ 응원 완료 🔥'
+                          : `🔥 응원하기 ${activeCard.cheerLevel().level > 0 ? `Lv.${activeCard.cheerLevel().level}` : ''}`}
+                      </Text>
+                    </Pressable>
+                  );
+                })()}
 
                 <Pressable
                   style={styles.nextCardButton}
@@ -437,6 +483,32 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  
+  exploreBannerButton: {
+    backgroundColor: '#1E232A',
+    borderWidth: 1,
+    borderColor: '#3182F6',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  exploreBannerButtonText: {
+    color: '#3182F6',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cheerButtonActive: {
+    backgroundColor: 'rgba(255, 146, 43, 0.22)',
+    borderColor: '#FF922B',
+  },
+  cheerButtonActiveText: {
+    color: '#FF922B',
+    fontWeight: '700',
   },
   cardBox: {
     backgroundColor: TossTheme.colors.card,

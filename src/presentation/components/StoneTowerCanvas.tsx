@@ -45,6 +45,11 @@ export interface StoneTowerCanvasProps {
   readonly enablePan?: boolean;
   readonly enableZoom?: boolean;
   readonly selectedStoneId?: WishId | null;
+  readonly hoveringPreviewStone?: {
+    shape: StoneShape;
+    color: string;
+    offset: { x: number; y?: number; z: number };
+  } | null;
 }
 
 function normalizeTowerStoneItems(
@@ -304,6 +309,77 @@ function DroppedStoneMesh3D({
         flatShading={geo.flatShading}
       />
     </mesh>
+  );
+}
+
+
+function HoveringStonePreview3D({
+  shape,
+  color,
+  offset,
+  towerTopY,
+}: {
+  shape: StoneShape;
+  color: string;
+  offset: { x: number; y?: number; z: number };
+  towerTopY: number;
+}) {
+  const meshRef = React.useRef<THREE.Mesh>(null);
+  const geo = buildStoneGeometrySpec(shape);
+  const sx = geo.scale.x * 0.5;
+  const sy = geo.scale.y * 0.5;
+  const sz = geo.scale.z * 0.5;
+
+  const targetY = towerTopY;
+  const hoverY = offset.y ?? targetY + 0.42;
+  const isBalanced = Math.hypot(offset.x, offset.z) < 0.22;
+  const auraColor = isBalanced ? '#3182F6' : '#FA5252';
+
+  useFrame(({ clock }) => {
+    if (meshRef.current) {
+      const bob = Math.sin(clock.getElapsedTime() * 3.5) * 0.02;
+      meshRef.current.position.set(offset.x, hoverY + bob, offset.z);
+    }
+  });
+
+  return (
+    <group>
+      <mesh ref={meshRef} position={[offset.x, hoverY, offset.z]} castShadow>
+        {geo.shape === 'round' ? (
+          <dodecahedronGeometry args={[sy * 1.1, 1]} />
+        ) : geo.shape === 'flat' ? (
+          <boxGeometry args={[sx, sy, sz]} />
+        ) : geo.shape === 'tall' ? (
+          <boxGeometry args={[sx, sy, sz]} />
+        ) : geo.shape === 'pebble' ? (
+          <dodecahedronGeometry args={[sy * 1.05, 1]} />
+        ) : (
+          <dodecahedronGeometry args={[sy * 1.2, 0]} />
+        )}
+        <meshStandardMaterial
+          color={color}
+          roughness={geo.roughness}
+          metalness={geo.metalness}
+          emissive={auraColor}
+          emissiveIntensity={0.5}
+          transparent
+          opacity={0.92}
+          flatShading={geo.flatShading}
+        />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[offset.x, Math.max(0.01, targetY + 0.01), offset.z]}
+      >
+        <ringGeometry args={[0.07, 0.16, 24]} />
+        <meshBasicMaterial
+          color={auraColor}
+          transparent
+          opacity={0.8}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </group>
   );
 }
 

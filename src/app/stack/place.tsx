@@ -62,6 +62,7 @@ export default function PlaceStone3DScreen() {
   );
   const [isNearTarget, setIsNearTarget] = useState(false);
   const [isOffCenter, setIsOffCenter] = useState(false);
+  const [hoverOffset, setHoverOffset] = useState<{ x: number; z: number }>({ x: 0, z: 0 });
 
   const collapseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -729,6 +730,93 @@ const styles = StyleSheet.create({
   },
   dropZoneTextWarning: {
     color: '#FF6B6B',
+    fontWeight: '700',
+  },
+  
+  placementControlPanel: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  placementGuideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    backgroundColor: '#1E2026',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2F343F',
+  },
+  stabilityIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stabilityDot: {
+    fontSize: 12,
+  },
+  stabilityText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#05D686',
+  },
+  stabilityTextWarning: {
+    color: '#FA5252',
+  },
+  coordText: {
+    fontSize: 11,
+    color: '#8B95A1',
+    fontWeight: '600',
+  },
+  nudgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginBottom: 10,
+  },
+  nudgeButton: {
+    flex: 1,
+    backgroundColor: '#262930',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#353A45',
+  },
+  nudgeCenterButton: {
+    backgroundColor: 'rgba(49, 130, 246, 0.16)',
+    borderColor: '#3182F6',
+  },
+  nudgeButtonText: {
+    color: '#E5E8EB',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  nudgeCenterText: {
+    color: '#3182F6',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  dropActionButton: {
+    backgroundColor: '#3182F6',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    shadowColor: '#3182F6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  dropActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
   dragTrackArea: {
