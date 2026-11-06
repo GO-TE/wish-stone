@@ -1,4 +1,4 @@
-rootProject.name = "stonewish-msa"
+rootProject.name = "wish-stone-msa"
 
 include(
     "common-events",

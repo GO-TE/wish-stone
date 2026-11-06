@@ -13,7 +13,7 @@ spring:
       ddl-auto: update
     open-in-view: false
 
-stonewish:
+wishstone:
   jwt:
-    secret: ${STONEWISH_JWT_SECRET:stonewish-default-hmac-sha256-secret-key-2026-secure}
+    secret: ${STONEWISH_JWT_SECRET:wishstone-default-hmac-sha256-secret-key-2026-secure}
     ttl-seconds: ${STONEWISH_JWT_TTL_SECONDS:604800}

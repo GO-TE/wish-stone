@@ -1,13 +1,13 @@
 version: '3.9'
 
 # =============================================================================
-# StoneWish Spring Boot MSA 로컬 인프라 (MySQL 4-DB 분리 + Redis + Kafka KRaft)
+# Wish Stone Spring Boot MSA 로컬 인프라 (MySQL 4-DB 분리 + Redis + Kafka KRaft)
 # 근거: dash_board/MSA.md 5장, dash_board/기술 스택.md 3장, dash_board/데이터 모델.md
 # =============================================================================
 services:
   mysql:
     image: mysql:8.0
-    container_name: stonewish-mysql
+    container_name: wishstone-mysql
     ports:
       - "3306:3306"
     environment:
@@ -27,7 +27,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: stonewish-redis
+    container_name: wishstone-redis
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -36,7 +36,7 @@ services:
 
   kafka:
     image: apache/kafka:3.8.0
-    container_name: stonewish-kafka
+    container_name: wishstone-kafka
     ports:
       - "9092:9092"
     environment:

@@ -118,16 +118,16 @@ export function evaluateLiveBalance(x: number): {
   if (absX <= BALANCE_THRESHOLD_CAUTION) {
     return {
       rating: 'caution',
-      auraColor: '#FFB300', // Amber Caution
+      auraColor: '#FFB300',
       isBalanced: false,
-      statusHint: '⚡ 약간 기울어짐 (조금 더 가운데로 맞춰주세요)',
+      statusHint: '🌱 자연스러운 위치 (손을 놓으면 안착)',
     };
   }
   return {
     rating: 'critical',
-    auraColor: '#FF6B6B', // Coral Red Warning
+    auraColor: '#FF6B6B',
     isBalanced: false,
-    statusHint: '⚠️ 중심에서 벗어남 (전복 위험!)',
+    statusHint: '🍃 바닥 및 주변 위치 (자유롭게 놓아보세요)',
   };
 }
 

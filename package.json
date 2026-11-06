@@ -1,5 +1,5 @@
 {
-  "name": "stonewish-client",
+  "name": "wish-stone-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web --port 8085",
-    "test": "node --test src/__tests__/*.test.ts"
+    "test": "node --test src/__tests__/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build:web": "expo export -p web",
+    "backend:start": "node scripts/start-backend.cjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.114.0",

@@ -31,7 +31,7 @@ export class MsaAuthService implements AuthService {
     this.http = http;
     if (typeof localStorage !== 'undefined') {
       try {
-        const raw = localStorage.getItem('stonewish_auth_profile');
+        const raw = localStorage.getItem('wishstone_auth_profile');
         if (raw) {
           const parsed = JSON.parse(raw);
           this.currentProfile = {
@@ -94,7 +94,7 @@ export class MsaAuthService implements AuthService {
     this.currentProfile = updated;
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem('stonewish_auth_profile', JSON.stringify({ id: updated.id, nickname: updated.nickname?.displayName ?? null, tag: updated.nickname?.tag ?? null, isGuest: updated.isGuest }));
+        localStorage.setItem('wishstone_auth_profile', JSON.stringify({ id: updated.id, nickname: updated.nickname?.displayName ?? null, tag: updated.nickname?.tag ?? null, isGuest: updated.isGuest }));
       } catch {}
     }
     return updated;
@@ -103,14 +103,14 @@ export class MsaAuthService implements AuthService {
   async signOut(): Promise<void> {
     this.http.setAccessToken(null);
     this.currentProfile = null;
-    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('stonewish_auth_profile'); } catch {} }
+    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('wishstone_auth_profile'); } catch {} }
   }
 
   async deleteAccount(): Promise<void> {
     await this.http.request('DELETE', '/api/v1/users/me');
     this.http.setAccessToken(null);
     this.currentProfile = null;
-    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('stonewish_auth_profile'); } catch {} }
+    if (typeof localStorage !== 'undefined') { try { localStorage.removeItem('wishstone_auth_profile'); } catch {} }
   }
 
   currentUser(): UserProfile | null {
@@ -130,7 +130,7 @@ export class MsaAuthService implements AuthService {
     this.currentProfile = profile;
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem('stonewish_auth_profile', JSON.stringify({ id: profile.id, nickname: rawNick ?? null, tag: dto.user.tag ?? null, isGuest: profile.isGuest }));
+        localStorage.setItem('wishstone_auth_profile', JSON.stringify({ id: profile.id, nickname: rawNick ?? null, tag: dto.user.tag ?? null, isGuest: profile.isGuest }));
       } catch {}
     }
     return {

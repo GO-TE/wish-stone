@@ -23,6 +23,6 @@ services:
   group:
     url: ${GROUP_SERVICE_URL:http://localhost:8084}
 
-stonewish:
+wishstone:
   quota:
     daily-base: 5
