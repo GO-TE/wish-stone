@@ -146,3 +146,12 @@
   1. `src/app/stack/place.tsx`에서 실패 테스트 버튼(`빗맞힘 테스트 (전복)`), 붉은 붕괴 경고 배너(`collapsedBox`), 부정적 문구(`중심을 잃고 굴러떨어지는 중...`)를 모두 제거하고 평온한 안내 문구로 전환하되, 재시도 플로우(`FALLEN_CHOICE` → `↺ 다시 올려보기` / `⛰️ 이 자리에 그대로 두기`)는 그대로 유지한다.
   2. `src/presentation/components/StoneTowerCanvas.tsx`에서 모든 `<boxGeometry>` 및 `<dodecahedronGeometry>`를 제거하고 전 형상에 `createRiverPebbleGeometry`와 `flatShading: false`를 일괄 적용하여 네모난 돌을 완전히 삭제한다.
   3. 3D/2D 조약돌 시각 크기를 아담하게 축소(`PEBBLE_VISUAL_SCALE_FACTOR = 0.72` 및 컴팩트 `SHAPE_PROFILES`)하고, `src/app/stack/stone.tsx`의 수동 모양/색상 선택 UI를 삭제하여 오직 `[ 🎲 다른 돌 찾아보기 ]` 랜덤 뽑기로만 조약돌을 만나도록 일원화한다.
+
+
+## D-028: v2.2 공중부양 원천 차단, 우클릭 카메라 이동, 수직 돌 들어올리기 및 동그란 자갈돌 단일화 (2026-11-09)
+- **배경**: (1) 바닥에 흩어진 돌 옆에 자동 안착되거나 비주얼 스케일 차이로 인해 공중에 떠 있는 돌이 발생했고, (2) 우클릭으로 카메라를 자유 이동하고 싶은 요구사항이 있었으며, (3) 카메라 자유 이동이 가능하므로 돌을 들어 올릴 때 앞으로 나아가지 않고 위로만 올라가야 직관적이며, (4) 세로로 길쭉한 돌(`tall`) 대신 동그란 자갈돌만 남기기로 결정함.
+- **결정**:
+  1. **공중부양 완전 제거**: `StoneTowerCanvas.tsx`의 `resolveGrounded3DNodes` 및 `resolveLocalSupportTopY`를 통해 각 돌의 `(x, z)` 바로 아래에 실제로 겹치는 지지석이 있는지 판별하여 바닥(`y = hy`) 또는 하부 지지석 상단(`supportTopY + hy`)에 밀착 렌더링하고, `StackStoneUseCase` 및 `place.tsx`의 자동 안착 좌표도 실제 최상단 돌의 `(x, z)` 위를 향하도록 수정.
+  2. **우클릭 자유 카메라 이동**: `<OrbitControls>`에 `mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}` 및 `enablePan = true` 기본값을 적용하고 우클릭 컨텍스트 메뉴를 차단.
+  3. **수직 전용 리프트**: `InteractiveDraggableStone3D`에서 전방 수렴(`radialDist`)을 `0`으로 제거하여 돌을 들어 올릴 때 앞으로 가지 않고 수직 위로만 올라가도록 변경.
+  4. **동그란 자갈돌 단일화**: `ROUND_PEBBLE_VISUAL_SCALES` 및 `getRoundPebbleVisualScale`을 도입해 모든 돌을 아담하고 동그란 자갈돌 비례로 렌더링.

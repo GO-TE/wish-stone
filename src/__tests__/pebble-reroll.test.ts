@@ -541,3 +541,31 @@ test('v2.1 Refinement: Failure action/text removal, retry flow preservation, zer
   assert.ok(!stoneSource.includes('colorButton'), 'stone.tsx must remove manual color buttons');
   assert.ok(stoneSource.includes('🎲 다른 돌 찾아보기'), 'stone.tsx must provide random reroll button');
 });
+
+
+test('v2.2 Refinement: Zero floating stones (resolveGrounded3DNodes), right-click free camera pan, vertical-only stone lift, and round pebble normalization', () => {
+  const canvasPath = path.join(SRC_DIR, 'presentation/components/StoneTowerCanvas.tsx');
+  const stonePath = path.join(SRC_DIR, 'app/stack/stone.tsx');
+  const canvasSource = fs.readFileSync(canvasPath, 'utf8');
+  const stoneSource = fs.readFileSync(stonePath, 'utf8');
+
+  // 1. Floating stone elimination via resolveGrounded3DNodes & resolveLocalSupportTopY
+  assert.ok(canvasSource.includes('export function resolveGrounded3DNodes'), 'StoneTowerCanvas must export resolveGrounded3DNodes');
+  assert.ok(canvasSource.includes('export function resolveLocalSupportTopY'), 'StoneTowerCanvas must export resolveLocalSupportTopY');
+  assert.ok(canvasSource.includes('resolveGrounded3DNodes(rawNodes)'), 'StoneTowerCanvas must ground all 3D nodes before rendering');
+
+  // 2. Right-click free camera pan (THREE.MOUSE.PAN) & context menu prevention
+  assert.ok(canvasSource.includes('RIGHT: THREE.MOUSE.PAN'), 'OrbitControls must map RIGHT mouse button to THREE.MOUSE.PAN');
+  assert.ok(canvasSource.includes('enablePan = true'), 'StoneTowerCanvas must enable camera panning by default');
+  assert.ok(canvasSource.includes('onContextMenu'), 'StoneTowerCanvas must prevent browser context menu on right-click pan');
+  assert.ok(canvasSource.includes('if (typeof btn === \'number\' && btn !== 0)'), 'InteractiveDraggableStone3D must ignore right-click so camera pan works anywhere');
+
+  // 3. Strictly vertical lift without forward drift
+  assert.ok(canvasSource.includes('const spawnDist = 0;'), 'Stone must anchor at camera target without forward offset');
+  assert.ok(canvasSource.includes('const radialDist = 0;'), 'Stone lift must move strictly upward without forward radial convergence');
+
+  // 4. All stones normalized to round pebbles (no elongated vertical pillars)
+  assert.ok(canvasSource.includes('ROUND_PEBBLE_VISUAL_SCALES'), 'StoneTowerCanvas must define ROUND_PEBBLE_VISUAL_SCALES');
+  assert.ok(canvasSource.includes('getRoundPebbleVisualScale'), 'StoneTowerCanvas must normalize all shapes to round pebbles');
+  assert.ok(!stoneSource.includes('세워진 조약돌'), 'stone.tsx must not label any stone as elongated/standing ("세워진 조약돌")');
+});
