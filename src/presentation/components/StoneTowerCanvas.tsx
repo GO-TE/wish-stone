@@ -1320,7 +1320,7 @@ export function StoneTowerCanvas({
   const [towerStyle, setTowerStyle] = useState<TowerArchStyle>(defaultStyle);
   const [selectedNode, setSelectedNode] = useState<StoneRenderNode | null>(null);
   const [randomSeed, setRandomSeed] = useState(42);
-  const [lushMossEnabled, setLushMossEnabled] = useState(true);
+  const [lushMossEnabled, setLushMossEnabled] = useState(false);
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const orbitControlsRef = useRef<any>(null);
   const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1595,22 +1595,7 @@ export function StoneTowerCanvas({
             <Pressable style={styles.actionPill} onPress={handleReroll}>
               <Text style={styles.actionPillText}>🎲 모양 무작위 변형</Text>
             </Pressable>
-            <Pressable
-              style={[
-                styles.actionPill,
-                lushMossEnabled && styles.actionPillMossActive,
-              ]}
-              onPress={() => setLushMossEnabled((v) => !v)}
-            >
-              <Text
-                style={[
-                  styles.actionPillText,
-                  lushMossEnabled && styles.actionPillMossActiveText,
-                ]}
-              >
-                {lushMossEnabled ? '🌿 이끼·꽃: 켬' : '🌿 이끼·꽃: 끔'}
-              </Text>
-            </Pressable>
+
           </View>
         </View>
       )}
@@ -2072,7 +2057,7 @@ export function StoneTowerCanvas({
                           )}
 
                           {/* 3. 풍성한 이끼 & 산들꽃 전체 덮개 블랭킷 */}
-                          {lushMossEnabled && (
+                          {false && lushMossEnabled && (
                             <View style={styles.mossBlanketLayer}>
                               {/* 상단 능선을 따라 흘러내리는 다층 이끼 망토 */}
                               <View
