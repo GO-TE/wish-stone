@@ -416,7 +416,25 @@ export default function PlaceStone3DScreen() {
           </Pressable>
         </View>
 
-
+        {/* Floating Reroll Action Button (F21) */}
+        {!isBusy && (
+          <View style={styles.floatingRerollContainer}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.floatingRerollButton,
+                pressed && styles.floatingRerollButtonPressed,
+              ]}
+              onPress={() => {
+                safeHaptic('grab');
+                controller.rerollStone();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="다른 돌 찾아보기"
+            >
+              <Text style={styles.floatingRerollText}>🎲 다른 돌 찾아보기</Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Stone Tower Canvas with 3D Direct Drag Interaction */}
         <StoneTowerCanvas
@@ -454,8 +472,12 @@ export default function PlaceStone3DScreen() {
           droppedStone={renderedDroppedStone}
           showControls={false}
           enableOrbitControls
+          enablePan={true}
+          enableZoom={true}
           cameraPreset={cameraPreset}
           onCameraPresetChange={setCameraPreset}
+          enableRecenterButton={true}
+          onRecenter={() => setCameraPreset('front')}
           towerTopY={activeTower.topSurfaceY ? activeTower.topSurfaceY() : activeTower.topY()}
           onCollapseAnimationComplete={() => handleCollapseComplete()}
           onPlaybackComplete={() => handleCollapseComplete()}
@@ -636,14 +658,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  
-  
-  
-  
-  
-  
-  
-  
+  floatingRerollContainer: {
+    position: 'absolute',
+    top: 56,
+    right: 14,
+    zIndex: 15,
+  },
+  floatingRerollButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  floatingRerollButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    transform: [{ scale: 0.97 }],
+  },
+  floatingRerollText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textPrimary,
+    fontWeight: '700',
+  },
   placementControlPanel: {
     width: '100%',
     paddingHorizontal: 16,

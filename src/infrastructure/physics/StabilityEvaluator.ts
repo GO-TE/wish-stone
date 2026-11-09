@@ -7,9 +7,58 @@ import {
 import { StonePhysicsBodyFactory } from './StonePhysicsBodyFactory.ts';
 
 /**
+ * 마이크로 워블(감쇠 조화 진동) 설정 인터페이스
+ * PROJECT_V2.md § Interface Contracts 준수
+ */
+export interface WobbleConfig {
+  readonly enabled: boolean;
+  readonly initialAngle: number; // radians
+  readonly tiltAxis: readonly [number, number, number]; // unit vector
+  readonly frequency: number; // rad/s (omega_n or omega_d)
+  readonly dampingRatio: number; // zeta
+}
+
+/**
+ * CoG 편심비(eta), 3대 안정성 존(stable/tension/topple), 마이크로 워블 및 경사면 미끄러짐을 포함한 고급 안정성 평가 결과
+ * PROJECT_V2.md § Interface Contracts 준수
+ */
+export interface AdvancedStabilityEvaluation extends StabilityEvaluation {
+  readonly eccentricityRatio: number; // eta = d_ecc / R_support
+  readonly zone: 'stable' | 'tension' | 'topple';
+  readonly wobbleConfig?: WobbleConfig;
+  readonly inclineSlipSpeed?: number;
+  readonly criticalTorqueThreshold?: number; // tau_crit
+}
+
+/**
+ * 쿨롱 경사면 마찰 미끄러짐 평가 결과
+ */
+export interface InclineSlipEvaluation {
+  readonly shouldSlip: boolean;
+  readonly tangentialAcceleration: number; // m/s^2 (a = g*(sin(theta) - mu_k*cos(theta)))
+  readonly normalAcceleration: number; // m/s^2
+  readonly criticalSlipAngleDeg: number; // degrees
+  readonly frictionCoefficient: number; // mu_s
+}
+
+/**
+ * 물리 안정성 및 마이크로 워블/마찰 미끄러짐 표준 상수
+ */
+export const STABILITY_ZONES = {
+  STABLE_ETA_MAX: 0.40, // eta < 0.40: Stable
+  TENSION_ETA_MAX: 0.90, // 0.40 <= eta <= 0.90: Tension Micro-Wobble
+  // eta > 0.90: Topple / Overturning
+  DEFAULT_NATURAL_FREQ: 20.0, // rad/s
+  DEFAULT_DAMPING_RATIO: 0.30, // zeta (underdamped)
+  STATIC_FRICTION_COEFF: 0.50, // tan(26.565°)
+  KINETIC_FRICTION_RATIO: 0.90, // mu_k = 0.9 * mu_s = 0.45
+  GRAVITY: 9.82, // m/s^2
+} as const;
+
+/**
  * 쿼터니언을 사용해 3차원 벡터를 회전
  */
-function rotateVec3ByQuat(v: Vec3, q: Quat): Vec3 {
+export function rotateVec3ByQuat(v: Vec3, q: Quat): Vec3 {
   const qx = q.qx;
   const qy = q.qy;
   const qz = q.qz;
@@ -201,14 +250,178 @@ export class StabilityEvaluator {
   }
 
   /**
-   * 무게중심(COM)과 지지 다각형 간의 정적 안정성(유도 거리 및 전복 토크) 평가
+   * 볼록 지지 다각형의 중심에서 특정 방향으로의 유효 지지 반경(R_support) 계산
+   * - 방향 벡터가 없거나 미소한 경우 다각형 모서리까지의 최소/평균 거리 반환
+   * - 방향 벡터가 있는 경우 중심에서 해당 방향으로 뻗는 반직선과 볼록 다각형 모서리와의 교점 거리 계산
+   */
+  public static computeSupportRadius(
+    polygon: SupportPolygon | readonly (readonly [number, number])[] | readonly [number, number][],
+    direction?: [number, number] | readonly [number, number],
+    centroidOverride?: readonly [number, number]
+  ): number {
+    const vertices: readonly (readonly [number, number])[] = Array.isArray(polygon)
+      ? polygon
+      : (polygon as SupportPolygon).vertices;
+
+    if (vertices.length < 3) {
+      return 0;
+    }
+
+    const c: readonly [number, number] = centroidOverride ?? (
+      Array.isArray(polygon)
+        ? [
+            vertices.reduce((acc, v) => acc + v[0], 0) / vertices.length,
+            vertices.reduce((acc, v) => acc + v[1], 0) / vertices.length,
+          ]
+        : (polygon as SupportPolygon).centroid
+    );
+
+    const dirX = direction ? direction[0] : 0;
+    const dirZ = direction ? direction[1] : 0;
+    const dirLen = Math.hypot(dirX, dirZ);
+
+    if (dirLen < 1e-6) {
+      let minDist = Infinity;
+      for (let i = 0; i < vertices.length; i++) {
+        const a = vertices[i];
+        const b = vertices[(i + 1) % vertices.length];
+        const dx = b[0] - a[0];
+        const dz = b[1] - a[1];
+        const lenSq = dx * dx + dz * dz;
+        if (lenSq > 1e-12) {
+          const t = Math.max(0, Math.min(1, ((c[0] - a[0]) * dx + (c[1] - a[1]) * dz) / lenSq));
+          const cx = a[0] + t * dx;
+          const cz = a[1] + t * dz;
+          const d = Math.hypot(c[0] - cx, c[1] - cz);
+          if (d < minDist) minDist = d;
+        }
+      }
+      return Number.isFinite(minDist) && minDist > 0 ? minDist : 0.25;
+    }
+
+    const ux = dirX / dirLen;
+    const uz = dirZ / dirLen;
+
+    // 반직선 c + t * u (t > 0)과 각 변 (a, b)의 교점 계산
+    for (let i = 0; i < vertices.length; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % vertices.length];
+      const dx = b[0] - a[0];
+      const dz = b[1] - a[1];
+
+      const det = uz * dx - ux * dz;
+      if (Math.abs(det) > 1e-9) {
+        const t = ((a[1] - c[1]) * dx - (a[0] - c[0]) * dz) / det;
+        const s = (ux * (a[1] - c[1]) - uz * (a[0] - c[0])) / det;
+        if (t > 1e-6 && s >= -1e-5 && s <= 1 + 1e-5) {
+          return t;
+        }
+      }
+    }
+
+    let avgDist = 0;
+    for (const v of vertices) {
+      avgDist += Math.hypot(v[0] - c[0], v[1] - c[1]);
+    }
+    return avgDist / vertices.length;
+  }
+
+  /**
+   * 편심 거리(eccentricOffsetDistance)와 지지 반경(supportRadius)을 기반으로
+   * CoG 편심비(eta = d_ecc / R_support) 및 3대 물리 존(stable/tension/topple) 판정
+   */
+  public static evaluateEccentricityZone(
+    eccentricOffsetDistance: number,
+    supportRadius: number
+  ): { eta: number; zone: 'stable' | 'tension' | 'topple' } {
+    if (
+      supportRadius <= 1e-6 ||
+      !Number.isFinite(eccentricOffsetDistance) ||
+      !Number.isFinite(supportRadius)
+    ) {
+      return { eta: Infinity, zone: 'topple' };
+    }
+    const eta = eccentricOffsetDistance / supportRadius;
+    if (eta < STABILITY_ZONES.STABLE_ETA_MAX) {
+      return { eta, zone: 'stable' };
+    }
+    if (eta <= STABILITY_ZONES.TENSION_ETA_MAX) {
+      return { eta, zone: 'tension' };
+    }
+    return { eta, zone: 'topple' };
+  }
+
+  /**
+   * 마이크로 워블(감쇠 조화 진동) 순간 경사각 계산
+   * theta(t) = theta0 * exp(-zeta * wn * t) * cos(wd * t)
+   */
+  public static computeMicroWobbleAngle(
+    t: number,
+    wobbleConfigOrInitialAngle: WobbleConfig | number,
+    dampingRatio = STABILITY_ZONES.DEFAULT_DAMPING_RATIO,
+    naturalFreq = STABILITY_ZONES.DEFAULT_NATURAL_FREQ
+  ): number {
+    const theta0 =
+      typeof wobbleConfigOrInitialAngle === 'number'
+        ? wobbleConfigOrInitialAngle
+        : wobbleConfigOrInitialAngle.initialAngle;
+
+    if (t <= 0) {
+      return theta0;
+    }
+
+    const zeta =
+      typeof wobbleConfigOrInitialAngle === 'number'
+        ? dampingRatio
+        : wobbleConfigOrInitialAngle.dampingRatio;
+    const wn =
+      typeof wobbleConfigOrInitialAngle === 'number'
+        ? naturalFreq
+        : wobbleConfigOrInitialAngle.frequency;
+
+    const dampedFreq = wn * Math.sqrt(Math.max(0, 1 - zeta * zeta));
+    const envelope = Math.exp(-zeta * wn * t);
+    return theta0 * envelope * Math.cos(dampedFreq * t);
+  }
+
+  /**
+   * 쿨롱 경사면 마찰 미끄러짐(Friction Slip) 평가
+   * - 접촉면 경사각 theta > 25° ~ 30° (tan(theta) > mu_s) 시 하향 미끄러짐 개시
+   * - 하향 접선 가속도 a = g * (sin(theta) - mu_k * cos(theta)) 계산
+   */
+  public static evaluateInclineSlip(
+    surfaceTiltAngleDeg: number,
+    frictionCoeff = STABILITY_ZONES.STATIC_FRICTION_COEFF,
+    gravity = STABILITY_ZONES.GRAVITY
+  ): InclineSlipEvaluation {
+    const rad = (surfaceTiltAngleDeg * Math.PI) / 180;
+    const tanTheta = Math.tan(rad);
+    const shouldSlip = tanTheta > frictionCoeff;
+    const criticalSlipAngleDeg = (Math.atan(frictionCoeff) * 180) / Math.PI;
+    const muKinetic = frictionCoeff * STABILITY_ZONES.KINETIC_FRICTION_RATIO;
+    const tangentialAcceleration = shouldSlip
+      ? Math.max(0, gravity * (Math.sin(rad) - muKinetic * Math.cos(rad)))
+      : 0;
+    const normalAcceleration = gravity * Math.cos(rad);
+
+    return {
+      shouldSlip,
+      tangentialAcceleration: Number(tangentialAcceleration.toFixed(4)),
+      normalAcceleration: Number(normalAcceleration.toFixed(4)),
+      criticalSlipAngleDeg: Number(criticalSlipAngleDeg.toFixed(2)),
+      frictionCoefficient: frictionCoeff,
+    };
+  }
+
+  /**
+   * 무게중심(COM)과 지지 다각형 간의 정적/동적 안정성(유도 거리, 편심비, 마이크로 워블 및 전복 토크) 평가
    */
   public static evaluateStability(
     com: Vec3,
-    polygon: SupportPolygon | readonly [number, number][],
+    polygon: SupportPolygon | readonly (readonly [number, number])[] | readonly [number, number][],
     mass = 1.0
-  ): StabilityEvaluation {
-    const vertices: readonly [number, number][] = Array.isArray(polygon)
+  ): AdvancedStabilityEvaluation {
+    const vertices: readonly (readonly [number, number])[] = Array.isArray(polygon)
       ? polygon
       : (polygon as SupportPolygon).vertices;
 
@@ -225,6 +438,8 @@ export class StabilityEvaluator {
         marginDistance: -Infinity,
         com2D: p,
         nearestEdgeDistance: 0,
+        eccentricityRatio: Infinity,
+        zone: 'topple',
       };
     }
 
@@ -274,16 +489,70 @@ export class StabilityEvaluator {
     const marginDistance = isInside ? minDist : -minDist;
     const isStable = marginDistance >= -1e-4;
 
+    // 편심 거리 및 유효 지지 반경 계산
+    const centroid: readonly [number, number] = Array.isArray(polygon)
+      ? [
+          vertices.reduce((acc, v) => acc + v[0], 0) / vertices.length,
+          vertices.reduce((acc, v) => acc + v[1], 0) / vertices.length,
+        ]
+      : (polygon as SupportPolygon).centroid;
+
+    const rxCentroid = p[0] - centroid[0];
+    const rzCentroid = p[1] - centroid[1];
+    const eccDist = Math.hypot(rxCentroid, rzCentroid);
+    const supportRadius = this.computeSupportRadius(polygon, [rxCentroid, rzCentroid], centroid);
+    const { eta, zone } = this.evaluateEccentricityZone(eccDist, supportRadius);
+
+    // 기하학적으로 외부에 있는 경우 topple zone 강제
+    const finalZone: 'stable' | 'tension' | 'topple' = !isStable ? 'topple' : zone;
+
+    let wobbleConfig: WobbleConfig | undefined;
+    if (finalZone === 'tension') {
+      const normalizedTension = Math.max(
+        0,
+        Math.min(
+          1,
+          (eta - STABILITY_ZONES.STABLE_ETA_MAX) /
+            (STABILITY_ZONES.TENSION_ETA_MAX - STABILITY_ZONES.STABLE_ETA_MAX)
+        )
+      );
+      const initialAngle = Number((0.03 + normalizedTension * (0.12 - 0.03)).toFixed(4));
+      const dirLen = eccDist > 1e-6 ? eccDist : 1.0;
+      const ux = rxCentroid / dirLen;
+      const uz = rzCentroid / dirLen;
+
+      // 틸트 회전축: 변위 방향(ux, 0, uz)에 수직인 단위 벡터 (-uz, 0, ux)
+      wobbleConfig = {
+        enabled: true,
+        initialAngle,
+        tiltAxis: [Number((-uz).toFixed(4)), 0, Number(ux.toFixed(4))],
+        frequency: STABILITY_ZONES.DEFAULT_NATURAL_FREQ,
+        dampingRatio: STABILITY_ZONES.DEFAULT_DAMPING_RATIO,
+      };
+    } else {
+      wobbleConfig = {
+        enabled: false,
+        initialAngle: 0,
+        tiltAxis: [1, 0, 0],
+        frequency: STABILITY_ZONES.DEFAULT_NATURAL_FREQ,
+        dampingRatio: STABILITY_ZONES.DEFAULT_DAMPING_RATIO,
+      };
+    }
+
+    const g = STABILITY_ZONES.GRAVITY;
+    const criticalTorqueThreshold = Number(
+      (supportRadius * (1 - STABILITY_ZONES.STABLE_ETA_MAX) * mass * g * 0.5).toFixed(4)
+    );
+
     let overturningTorque: Vec3 | undefined;
-    if (!isStable) {
+    if (!isStable || finalZone === 'topple') {
       // 전복 토크: tau = r x F, F = (0, -m*g, 0), g = 9.82 m/s^2
       // r = (rx, 0, rz)
-      // tau_x = -rz * Fy = -rz * (-m * g) = rz * mass * g
+      // tau_x = -rz * Fy = rz * mass * g
       // tau_y = 0
-      // tau_z = rx * Fy = rx * (-m * g) = -rx * mass * g
+      // tau_z = rx * Fy = -rx * mass * g
       const rx = com.x - nearestEdgePoint[0];
       const rz = com.z - nearestEdgePoint[1];
-      const g = 9.82;
       overturningTorque = {
         x: rz * mass * g,
         y: 0,
@@ -297,6 +566,10 @@ export class StabilityEvaluator {
       com2D: p,
       nearestEdgeDistance: minDist,
       overturningTorque,
+      eccentricityRatio: Number(eta.toFixed(4)),
+      zone: finalZone,
+      wobbleConfig,
+      criticalTorqueThreshold,
     };
   }
 
@@ -306,7 +579,7 @@ export class StabilityEvaluator {
   public static evaluateStackStability(
     baseStone: Stone,
     upperStones: readonly { stone: Stone; mass?: number }[]
-  ): StabilityEvaluation {
+  ): AdvancedStabilityEvaluation {
     const polygon = this.computeSupportPolygon(baseStone);
 
     const stoneEntries = upperStones.map((entry) => {

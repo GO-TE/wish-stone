@@ -59,7 +59,7 @@ const SHAPE_SPECS: Record<StoneShape, ProceduralStoneGeometrySpec> = {
     segments: 24,
     roughness: 0.88,
     metalness: 0.05,
-    flatShading: true,
+    flatShading: false,
     bevelRadius: 0.18,
   },
   flat: {

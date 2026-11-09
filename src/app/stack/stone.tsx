@@ -1,9 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type StoneShape } from '../../domain/entities/Stone.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
+import { NATURAL_PEBBLE_PALETTE } from '../../presentation/components/pebbleGeometrySpec.ts';
 import { TossTheme } from '../../presentation/theme/tossTheme.ts';
+
+function safeHaptic(type: 'grab' | 'warning' | 'success') {
+  try {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      if (type === 'grab') navigator.vibrate(20);
+      else if (type === 'warning') navigator.vibrate([80, 40, 80]);
+      else if (type === 'success') navigator.vibrate([40, 80, 40]);
+    }
+  } catch {
+    // Non-blocking fallback
+  }
+}
 
 const STONE_SHAPES: readonly {
   shape: StoneShape;
@@ -17,13 +30,11 @@ const STONE_SHAPES: readonly {
   { shape: 'boulder', label: '우직한 바위', desc: '무게감 있는 단단한 기초' },
 ];
 
-const STONE_COLORS: readonly { color: string; name: string }[] = [
-  { color: '#3A3F4D', name: '흑요석' },
-  { color: '#566070', name: '청회석' },
-  { color: '#8D99AE', name: '백옥석' },
-  { color: '#9E8E7D', name: '황토석' },
-  { color: '#C5B5A2', name: '화강암' },
-];
+const STONE_COLORS: readonly { color: string; name: string }[] =
+  NATURAL_PEBBLE_PALETTE.map((item) => ({
+    color: item.code,
+    name: item.name,
+  }));
 
 interface StoneVisualProfile {
   width: number;
@@ -89,9 +100,20 @@ export default function SelectStoneScreen() {
   );
   const [state, setState] = useState(() => controller.getState());
 
+  useEffect(() => {
+    return controller.subscribe((next) => {
+      setState(next);
+    });
+  }, [controller]);
+
   const handleSelect = (shape: StoneShape, color: string) => {
     controller.selectStone(shape, color);
     setState({ ...controller.getState() });
+  };
+
+  const handleReroll = () => {
+    safeHaptic('grab');
+    controller.rerollStone();
   };
 
   const selectedShape = state.selectedStone.shape;
@@ -139,6 +161,19 @@ export default function SelectStoneScreen() {
         <Text style={styles.previewDesc}>
           {currentShapeMeta.desc} · {currentColorMeta.name}
         </Text>
+
+        {/* Floating Reroll Button (F21) */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.rerollButton,
+            pressed && styles.rerollButtonPressed,
+          ]}
+          onPress={handleReroll}
+          accessibilityRole="button"
+          accessibilityLabel="다른 돌 찾아보기"
+        >
+          <Text style={styles.rerollButtonText}>🎲 다른 돌 찾아보기</Text>
+        </Pressable>
       </View>
 
       {/* Options 1: Stone Shape */}
@@ -331,10 +366,32 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontWeight: '700',
   },
+  rerollButton: {
+    marginTop: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: TossTheme.radius.button,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rerollButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    transform: [{ scale: 0.98 }],
+  },
+  rerollButtonText: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textPrimary,
+    fontWeight: '700',
+  },
   colorRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'flex-start',
   },
   colorButton: {
     alignItems: 'center',

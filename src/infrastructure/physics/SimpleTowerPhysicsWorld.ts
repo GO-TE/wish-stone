@@ -6,12 +6,33 @@ import {
   type PhysicsWorld,
   type SimulationFrame,
 } from '../../domain/ports/PhysicsWorld.ts';
-import { Pose } from '../../domain/value-objects/Pose.ts';
+import {
+  Pose,
+  type Vec3,
+} from '../../domain/value-objects/Pose.ts';
 import {
   type SimulationOptions,
 } from './PhysicsSimulationTypes.ts';
-import { StabilityEvaluator } from './StabilityEvaluator.ts';
+import {
+  StabilityEvaluator,
+  rotateVec3ByQuat,
+} from './StabilityEvaluator.ts';
 import { StonePhysicsBodyFactory } from './StonePhysicsBodyFactory.ts';
+
+/**
+ * 쿼터니언 곱셈 q1 * q2 (해밀턴 곱)
+ */
+function quatMultiply(
+  q1: { x: number; y: number; z: number; w: number },
+  q2: { x: number; y: number; z: number; w: number }
+): { x: number; y: number; z: number; w: number } {
+  return {
+    x: q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
+    y: q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
+    z: q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
+    w: q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
+  };
+}
 
 /**
  * 돌탑 쌓기 3D 강체 물리 시뮬레이터 (cannon-es 정품 물리 엔진 연동)
@@ -130,8 +151,14 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
   /**
    * 돌을 특정 3D Pose에서 드롭하여 60Hz 강체 물리 시뮬레이션을 수행하고,
    * 안정적 안착(settled: true) 또는 동적 전복/붕괴(settled: false, collapsed: true)를 판정
+   * - 임계 긴장 영역(Tension Zone, eta in [0.40, 0.90]) 드롭 시 마이크로 워블 감쇠 조화 진동(theta(t) = theta0 * exp(-zeta*wn*t)*cos(wd*t)) 반영
+   * - 쿨롱 경사면(tilt > 25° ~ 30°) 안착 시 하향 접선 미끄러짐(Friction Slip) 가속도 적용
    */
-  async drop(stone: Stone, from: Pose): Promise<DropResult> {
+  async drop(
+    stone: Stone,
+    from: Pose,
+    dropOptions?: { inclineAngleDeg?: number; inclineNormal?: Vec3 }
+  ): Promise<DropResult> {
     const dt = this.options.fixedDeltaTime;
     const maxSteps = this.options.maxSteps;
 
@@ -194,7 +221,56 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
           supportPolygon,
           dropConfig.mass
         )
-      : { isStable: true, marginDistance: 0, nearestEdgeDistance: 0 };
+      : {
+          isStable: true,
+          marginDistance: 0,
+          nearestEdgeDistance: 0,
+          eccentricityRatio: 0,
+          zone: 'stable' as const,
+          wobbleConfig: undefined,
+        };
+
+    const isTensionDrop = analyticalStability.zone === 'tension';
+    const wobbleCfg = analyticalStability.wobbleConfig;
+
+    // 접촉 경사각 및 쿨롱 마찰 미끄러짐 분석
+    let surfaceTiltAngleDeg = 0;
+    let downhillTangent: Vec3 = { x: 1, y: 0, z: 0 };
+
+    if (dropOptions?.inclineAngleDeg !== undefined) {
+      surfaceTiltAngleDeg = dropOptions.inclineAngleDeg;
+      if (dropOptions.inclineNormal) {
+        const n = dropOptions.inclineNormal;
+        const nLen = Math.hypot(n.x, n.y, n.z) || 1;
+        const unx = n.x / nLen;
+        const unz = n.z / nLen;
+        const radXZ = Math.hypot(unx, unz);
+        if (radXZ > 1e-6) {
+          downhillTangent = {
+            x: unx / radXZ,
+            y: -Math.sin((surfaceTiltAngleDeg * Math.PI) / 180),
+            z: unz / radXZ,
+          };
+        }
+      }
+    } else if (topStone) {
+      const nTop = rotateVec3ByQuat({ x: 0, y: 1, z: 0 }, topStone.pose.rotation);
+      const tiltCos = Math.max(-1, Math.min(1, nTop.y));
+      const stoneTiltDeg = Math.acos(tiltCos) * (180 / Math.PI);
+      if (stoneTiltDeg > 1.0) {
+        surfaceTiltAngleDeg = stoneTiltDeg;
+        const horizLen = Math.hypot(nTop.x, nTop.z);
+        if (horizLen > 1e-4) {
+          downhillTangent = {
+            x: nTop.x / horizLen,
+            y: -Math.sin(Math.acos(tiltCos)),
+            z: nTop.z / horizLen,
+          };
+        }
+      }
+    }
+
+    const inclineSlip = StabilityEvaluator.evaluateInclineSlip(surfaceTiltAngleDeg);
 
     // 수평 드롭 반경 거리
     const dropRadialDistance = Math.hypot(from.position.x, from.position.z);
@@ -219,6 +295,8 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
     const trajectory: SimulationFrame[] = [];
     let consecutiveSettledSteps = 0;
     let towerCollapseTriggered = false;
+    let contactStep = -1;
+    let slipSpeed = 0;
 
     for (let step = 0; step < maxSteps; step++) {
       // (a) 동적 전복 및 연쇄 붕괴 트리거 검사:
@@ -250,10 +328,76 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
         }
       }
 
-      // (b) 물리 스텝 진행
+      // (b) 경사면 쿨롱 마찰 미끄러짐(Incline Slip) 가속도 및 변위 적용:
+      if (inclineSlip.shouldSlip && topStone) {
+        const isTouchingTop =
+          dropBody.position.y <= topSurfaceY + dropConfig.halfExtents.y + 0.08 &&
+          dropBody.position.y >= topStone.pose.position.y;
+
+        if (isTouchingTop) {
+          slipSpeed += inclineSlip.tangentialAcceleration * dt;
+          dropBody.position.x += slipSpeed * dt * downhillTangent.x;
+          dropBody.position.y += slipSpeed * dt * downhillTangent.y;
+          dropBody.position.z += slipSpeed * dt * downhillTangent.z;
+          dropBody.velocity.x = slipSpeed * downhillTangent.x;
+          dropBody.velocity.y = slipSpeed * downhillTangent.y;
+          dropBody.velocity.z = slipSpeed * downhillTangent.z;
+        }
+      }
+
+      // (c) 물리 스텝 진행
       this.world.step(dt);
 
-      // (c) 궤적 프레임 기록
+      const isContactWithTower =
+        topStone !== null &&
+        dropBody.position.y <= topSurfaceY + dropConfig.halfExtents.y + 0.03 &&
+        dropBody.position.y >= topStone.pose.position.y - 0.05;
+
+      if (isContactWithTower && contactStep < 0) {
+        contactStep = step;
+      }
+
+      // (d) 궤적 프레임 기록 (마이크로 워블 감쇠 조화 진동 반영)
+      let recordQx = Number(dropBody.quaternion.x.toFixed(4));
+      let recordQy = Number(dropBody.quaternion.y.toFixed(4));
+      let recordQz = Number(dropBody.quaternion.z.toFixed(4));
+      let recordQw = Number(dropBody.quaternion.w.toFixed(4));
+
+      if (
+        isTensionDrop &&
+        wobbleCfg &&
+        wobbleCfg.enabled &&
+        contactStep >= 0 &&
+        step >= contactStep
+      ) {
+        const tWobble = (step - contactStep) * dt;
+        const thetaWobble = StabilityEvaluator.computeMicroWobbleAngle(tWobble, wobbleCfg);
+        const halfTheta = thetaWobble * 0.5;
+        const sinHalf = Math.sin(halfTheta);
+        const cosHalf = Math.cos(halfTheta);
+        const qwRot = {
+          x: wobbleCfg.tiltAxis[0] * sinHalf,
+          y: wobbleCfg.tiltAxis[1] * sinHalf,
+          z: wobbleCfg.tiltAxis[2] * sinHalf,
+          w: cosHalf,
+        };
+
+        const compQ = quatMultiply(
+          {
+            x: dropBody.quaternion.x,
+            y: dropBody.quaternion.y,
+            z: dropBody.quaternion.z,
+            w: dropBody.quaternion.w,
+          },
+          qwRot
+        );
+        const qNorm = Math.hypot(compQ.x, compQ.y, compQ.z, compQ.w) || 1;
+        recordQx = Number((compQ.x / qNorm).toFixed(4));
+        recordQy = Number((compQ.y / qNorm).toFixed(4));
+        recordQz = Number((compQ.z / qNorm).toFixed(4));
+        recordQw = Number((compQ.w / qNorm).toFixed(4));
+      }
+
       const framePoses = new Map<string, Pose>();
       framePoses.set(
         'dropped-stone',
@@ -264,10 +408,10 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
             z: Number(dropBody.position.z.toFixed(4)),
           },
           {
-            qx: Number(dropBody.quaternion.x.toFixed(4)),
-            qy: Number(dropBody.quaternion.y.toFixed(4)),
-            qz: Number(dropBody.quaternion.z.toFixed(4)),
-            qw: Number(dropBody.quaternion.w.toFixed(4)),
+            qx: recordQx,
+            qy: recordQy,
+            qz: recordQz,
+            qw: recordQw,
           }
         )
       );
@@ -297,7 +441,7 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
         poses: framePoses,
       });
 
-      // (d) 정지(Settling) 상태 판정
+      // (e) 정지(Settling) 상태 판정
       const dropSpeed = dropBody.velocity.length();
       const dropAngSpeed = dropBody.angularVelocity.length();
       let allSettled =
@@ -316,9 +460,10 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
         }
       }
 
+      const minRequiredSteps = isTensionDrop ? 75 : 45;
       if (allSettled) {
         consecutiveSettledSteps++;
-        if (consecutiveSettledSteps >= this.options.minSettledSteps && step >= 45) {
+        if (consecutiveSettledSteps >= this.options.minSettledSteps && step >= minRequiredSteps) {
           break;
         }
       } else {
