@@ -13,6 +13,13 @@ import { type StackPlacementPhase } from '../controllers/StackStoneController.ts
 import {
   type CameraPresetType,
   computePresetCameraView,
+  computeFocusCameraView,
+  clampCameraTarget,
+  ZEN_GARDEN_RADIUS,
+  CAMERA_PAN_MAX_RADIUS,
+  CAMERA_MIN_DISTANCE,
+  CAMERA_MAX_DISTANCE,
+  RECENTER_TRIGGER_DISTANCE,
 } from './cameraPresetSpec.ts';
 import {
   BALANCE_THRESHOLD_CAUTION,
@@ -37,6 +44,7 @@ import {
 export * from './stoneTowerSpec.ts';
 export * from './cameraPresetSpec.ts';
 export * from './stoneDragSpec.ts';
+export * from './pebbleGeometrySpec.ts';
 
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
@@ -59,6 +67,7 @@ export interface StoneTowerCanvasProps {
   readonly enablePan?: boolean;
   readonly enableZoom?: boolean;
   readonly selectedStoneId?: WishId | null;
+  readonly focusedStoneId?: WishId | null;
   readonly hoveredStoneId?: string | null;
   readonly onHoverStone?: (stoneId: string | null) => void;
   readonly hoveringPreviewStone?: {
@@ -72,6 +81,8 @@ export interface StoneTowerCanvasProps {
   readonly onStoneDragMove?: (result: DragWorldPositionResult) => void;
   readonly onStoneDrop?: (dropPose: Pose) => void;
   readonly onStoneDragCancel?: () => void;
+  readonly enableRecenterButton?: boolean;
+  readonly onRecenter?: () => void;
 }
 
 function normalizeTowerStoneItems(
@@ -268,7 +279,7 @@ function StoneMesh3D({
       ) : geo.shape === 'pebble' ? (
         <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : (
-        <dodecahedronGeometry args={[sy * 0.5, 0]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       )}
       <meshStandardMaterial
         color={node.material.baseColor}
@@ -289,7 +300,7 @@ function StoneMesh3D({
           ) : geo.shape === 'pebble' ? (
             <dodecahedronGeometry args={[sy * 0.5, 1]} />
           ) : (
-            <dodecahedronGeometry args={[sy * 0.5, 0]} />
+            <dodecahedronGeometry args={[sy * 0.5, 1]} />
           )}
           <meshBasicMaterial
             color="#3182F6"
@@ -365,7 +376,7 @@ function DroppedStoneMesh3D({
       ) : geo.shape === 'pebble' ? (
         <dodecahedronGeometry args={[sy * 0.5, 1]} />
       ) : (
-        <dodecahedronGeometry args={[sy * 0.5, 0]} />
+        <dodecahedronGeometry args={[sy * 0.5, 1]} />
       )}
       <meshStandardMaterial
         color={stone.color}
@@ -423,7 +434,7 @@ function HoveringStonePreview3D({
         ) : geo.shape === 'pebble' ? (
           <dodecahedronGeometry args={[sy * 0.5, 1]} />
         ) : (
-          <dodecahedronGeometry args={[sy * 0.5, 0]} />
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
         )}
         <meshStandardMaterial
           color={color}
@@ -449,6 +460,84 @@ function HoveringStonePreview3D({
         />
       </mesh>
     </group>
+  );
+}
+
+export const KARESANSUI_RIPPLE_RADII = [
+  3.2, 4.6, 6.2, 8.2, 10.6, 13.4, 16.8, 20.8, 25.2,
+] as const;
+
+export interface SteppingStoneConfig {
+  readonly x: number;
+  readonly z: number;
+  readonly scaleX: number;
+  readonly scaleZ: number;
+  readonly rotY: number;
+  readonly color: string;
+}
+
+export const STEPPING_STONES: readonly SteppingStoneConfig[] = [
+  { x: 2.8, z: 2.2, scaleX: 1.1, scaleZ: 0.9, rotY: 0.4, color: '#2B3240' },
+  { x: 3.8, z: 3.2, scaleX: 0.95, scaleZ: 1.15, rotY: 1.1, color: '#232834' },
+  { x: 4.6, z: 4.5, scaleX: 1.2, scaleZ: 1.0, rotY: 0.2, color: '#32394A' },
+  { x: -2.6, z: 2.5, scaleX: 1.05, scaleZ: 0.88, rotY: -0.6, color: '#282E3C' },
+  { x: -3.5, z: 3.8, scaleX: 0.9, scaleZ: 1.1, rotY: -1.2, color: '#1F2430' },
+  { x: -4.2, z: 5.2, scaleX: 1.15, scaleZ: 0.95, rotY: -0.3, color: '#2C3342' },
+];
+
+/**
+ * 3D Ambient Dust/Firefly Particles (소원의 불빛 / 반딧불이)
+ * Single InstancedMesh (24 instances) with gentle floating drift and sway motion
+ */
+export function ZenAmbientParticles({ count = 24 }: { count?: number }) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  const particles = useMemo(() => {
+    return Array.from({ length: count }, (_, i) => {
+      const radius = 2.5 + ((i * 7 + 3) % 13.5);
+      const angle = (i / count) * Math.PI * 2 + (((i * 13) % 10) / 10 - 0.5) * 0.5;
+      return {
+        initialX: Math.cos(angle) * radius,
+        initialZ: Math.sin(angle) * radius,
+        baseY: 0.4 + ((i * 5) % 30) / 10,
+        speedY: 0.15 + ((i * 3) % 20) / 100,
+        swayRadius: 0.15 + ((i * 2) % 25) / 100,
+        swayFreq: 0.8 + ((i * 4) % 12) / 10,
+        phase: ((i * 11) % 628) / 100,
+        scale: 0.7 + ((i * 6) % 60) / 100,
+      };
+    });
+  }, [count]);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    const t = clock.getElapsedTime();
+
+    for (let i = 0; i < count; i++) {
+      const p = particles[i];
+      const y = ((p.baseY + p.speedY * t) % 3.6) + 0.3;
+      const x = p.initialX + Math.sin(t * p.swayFreq + p.phase) * p.swayRadius;
+      const z = p.initialZ + Math.cos(t * p.swayFreq + p.phase) * p.swayRadius;
+
+      dummy.position.set(x, y, z);
+      dummy.scale.setScalar(p.scale);
+      dummy.updateMatrix();
+
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined as any, undefined as any, count]}
+      frustumCulled={false}
+    >
+      <sphereGeometry args={[0.028, 8, 8]} />
+      <meshBasicMaterial color="#94C4FF" transparent opacity={0.65} />
+    </instancedMesh>
   );
 }
 
@@ -507,9 +596,29 @@ export function InteractiveDraggableStone3D({
 
   const currentPosRef = useRef<readonly [number, number, number]>(initialPos);
   const startPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const activePointerIdRef = useRef<number | null>(null);
+  const activeCleanupRef = useRef<(() => void) | null>(null);
+
+  // Unmount cleanup: guarantees window listeners are removed and controls re-enabled
+  useEffect(() => {
+    return () => {
+      if (activeCleanupRef.current) {
+        activeCleanupRef.current();
+      }
+      if (controlsRef?.current) {
+        controlsRef.current.enabled = true;
+      }
+    };
+  }, [controlsRef]);
 
   useEffect(() => {
     if (phase === 'IDLE') {
+      if (activeCleanupRef.current) {
+        activeCleanupRef.current();
+      }
+      if (controlsRef?.current) {
+        controlsRef.current.enabled = true;
+      }
       currentPosRef.current = initialPos;
       setCurrentPos(initialPos);
       setIsDragging(false);
@@ -517,7 +626,7 @@ export function InteractiveDraggableStone3D({
       setBalanceRating('stable');
       setIsOverDropZone(false);
     }
-  }, [phase, initialPos, stone]);
+  }, [phase, initialPos, stone, controlsRef]);
 
   // Update camera azimuth angle while idle so stone stays in front of user
   useFrame(({ clock, camera }) => {
@@ -553,11 +662,25 @@ export function InteractiveDraggableStone3D({
       : '#FF6B6B';
 
   const handlePointerDown = (e: any) => {
-    if (!isDraggable) return;
+    if (!isDraggable || isDraggingRef.current) return;
     e.stopPropagation();
 
     isDraggingRef.current = true;
     setIsDragging(true);
+
+    const activePointerId = e.pointerId ?? (e.nativeEvent as any)?.pointerId ?? 1;
+    activePointerIdRef.current = activePointerId;
+
+    if (
+      typeof (e.target as any)?.setPointerCapture === 'function' &&
+      typeof e.pointerId === 'number'
+    ) {
+      try {
+        (e.target as any).setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback for non-DOM synthetic events
+      }
+    }
 
     // Lock camera azimuth at drag start
     const startAz = Math.atan2(camera.position.x, camera.position.z);
@@ -576,6 +699,13 @@ export function InteractiveDraggableStone3D({
     if (typeof window !== 'undefined') {
       const handleWindowPointerMove = (ev: PointerEvent) => {
         if (!isDraggingRef.current) return;
+        if (
+          activePointerIdRef.current !== null &&
+          ev.pointerId !== activePointerIdRef.current
+        ) {
+          return;
+        }
+
         const deltaX = ev.clientX - startPointerRef.current.x;
         const deltaY = ev.clientY - startPointerRef.current.y;
 
@@ -631,8 +761,26 @@ export function InteractiveDraggableStone3D({
         onDragMove?.(result);
       };
 
-      const handleWindowPointerUp = () => {
+      const cleanupWindowListeners = () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('pointermove', handleWindowPointerMove);
+          window.removeEventListener('pointerup', handleWindowPointerUp);
+          window.removeEventListener('pointercancel', handleWindowPointerUp);
+        }
+        activeCleanupRef.current = null;
+        activePointerIdRef.current = null;
+      };
+
+      const handleWindowPointerUp = (ev?: PointerEvent) => {
         if (!isDraggingRef.current) return;
+        if (
+          ev &&
+          activePointerIdRef.current !== null &&
+          ev.pointerId !== activePointerIdRef.current
+        ) {
+          return;
+        }
+
         isDraggingRef.current = false;
         setIsDragging(false);
 
@@ -640,9 +788,7 @@ export function InteractiveDraggableStone3D({
           controlsRef.current.enabled = true;
         }
 
-        window.removeEventListener('pointermove', handleWindowPointerMove);
-        window.removeEventListener('pointerup', handleWindowPointerUp);
-        window.removeEventListener('pointercancel', handleWindowPointerUp);
+        cleanupWindowListeners();
 
         const finalPos = currentPosRef.current;
         const stoneHalfY = StonePhysicsBodyFactory.getShapeConfig(stone.shape).halfExtents.y;
@@ -663,6 +809,8 @@ export function InteractiveDraggableStone3D({
           onDragCancel?.();
         }
       };
+
+      activeCleanupRef.current = cleanupWindowListeners;
 
       window.addEventListener('pointermove', handleWindowPointerMove);
       window.addEventListener('pointerup', handleWindowPointerUp);
@@ -761,7 +909,7 @@ export function InteractiveDraggableStone3D({
         ) : geo.shape === 'pebble' ? (
           <dodecahedronGeometry args={[sy * 0.5, 1]} />
         ) : (
-          <dodecahedronGeometry args={[sy * 0.5, 0]} />
+          <dodecahedronGeometry args={[sy * 0.5, 1]} />
         )}
         <meshStandardMaterial
           color={stone.color}
@@ -860,17 +1008,24 @@ interface TowerCameraControllerProps {
   readonly preset?: CameraPresetType;
   readonly towerTopY?: number;
   readonly controlsRef?: React.MutableRefObject<any>;
+  readonly focusedStoneNode?: StoneRenderNode | null;
+  readonly onTargetOffsetChange?: (offsetXZ: number) => void;
+  readonly onCameraPresetChange?: (preset: CameraPresetType) => void;
 }
 
 function TowerCameraController({
   preset,
   towerTopY,
   controlsRef,
+  focusedStoneNode,
+  onTargetOffsetChange,
+  onCameraPresetChange,
 }: TowerCameraControllerProps) {
   const { controls } = useThree() as any;
   const isTransitioningRef = useRef(false);
   const targetPosRef = useRef(new THREE.Vector3());
   const targetLookAtRef = useRef(new THREE.Vector3());
+  const prevFocusedStoneIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!preset || preset === 'free') {
@@ -884,38 +1039,97 @@ function TowerCameraController({
     isTransitioningRef.current = true;
   }, [preset, towerTopY]);
 
-  useFrame((state, delta) => {
-    if (!isTransitioningRef.current || !preset || preset === 'free') {
+  // Stone focus glide transition
+  useEffect(() => {
+    if (!focusedStoneNode) {
+      prevFocusedStoneIdRef.current = null;
       return;
     }
 
-    const activeControls = controlsRef?.current || controls || (state as any).controls;
-    const step = 1 - Math.exp(-Math.min(delta, 0.1) * 6.0);
-    const stepClamped = Math.max(0, Math.min(step, 1));
+    if (focusedStoneNode.id !== prevFocusedStoneIdRef.current) {
+      prevFocusedStoneIdRef.current = focusedStoneNode.id;
+      const stonePos = focusedStoneNode.position;
+      const activeControls = controlsRef?.current || controls;
+      const camPos = activeControls?.object?.position || undefined;
 
-    state.camera.position.lerp(targetPosRef.current, stepClamped);
-
-    if (activeControls && activeControls.target) {
-      activeControls.target.lerp(targetLookAtRef.current, stepClamped);
-      activeControls.update?.();
-    } else {
-      state.camera.lookAt(targetLookAtRef.current);
+      const viewConfig = computeFocusCameraView(stonePos, camPos);
+      targetPosRef.current.set(
+        viewConfig.position[0],
+        viewConfig.position[1],
+        viewConfig.position[2]
+      );
+      targetLookAtRef.current.set(
+        viewConfig.target[0],
+        viewConfig.target[1],
+        viewConfig.target[2]
+      );
+      isTransitioningRef.current = true;
     }
+  }, [focusedStoneNode, controls, controlsRef]);
 
-    const distPos = state.camera.position.distanceTo(targetPosRef.current);
-    const distTarget = activeControls?.target
-      ? activeControls.target.distanceTo(targetLookAtRef.current)
-      : 0;
+  useFrame((state, delta) => {
+    const activeControls = controlsRef?.current || controls || (state as any).controls;
 
-    if (distPos < 0.005 && distTarget < 0.005) {
-      state.camera.position.copy(targetPosRef.current);
+    // 1. Smooth Exponential Lerp Transition
+    if (isTransitioningRef.current) {
+      const step = 1 - Math.exp(-Math.min(delta, 0.1) * 6.0);
+      const stepClamped = Math.max(0, Math.min(step, 1));
+
+      state.camera.position.lerp(targetPosRef.current, stepClamped);
+
       if (activeControls && activeControls.target) {
-        activeControls.target.copy(targetLookAtRef.current);
+        activeControls.target.lerp(targetLookAtRef.current, stepClamped);
         activeControls.update?.();
       } else {
         state.camera.lookAt(targetLookAtRef.current);
       }
-      isTransitioningRef.current = false;
+
+      const distPos = state.camera.position.distanceTo(targetPosRef.current);
+      const distTarget = activeControls?.target
+        ? activeControls.target.distanceTo(targetLookAtRef.current)
+        : 0;
+
+      if (distPos < 0.005 && distTarget < 0.005) {
+        state.camera.position.copy(targetPosRef.current);
+        if (activeControls && activeControls.target) {
+          activeControls.target.copy(targetLookAtRef.current);
+          activeControls.update?.();
+        } else {
+          state.camera.lookAt(targetLookAtRef.current);
+        }
+        isTransitioningRef.current = false;
+      }
+    }
+
+    // 2. Target Clamping & Ground Collision Clamping (Enforced Every Frame)
+    if (activeControls && activeControls.target) {
+      const tx = activeControls.target.x;
+      const ty = activeControls.target.y;
+      const tz = activeControls.target.z;
+
+      const clamped = clampCameraTarget([tx, ty, tz], CAMERA_PAN_MAX_RADIUS, towerTopY);
+
+      const deltaX = clamped[0] - tx;
+      const deltaY = clamped[1] - ty;
+      const deltaZ = clamped[2] - tz;
+
+      if (Math.abs(deltaX) > 1e-4 || Math.abs(deltaY) > 1e-4 || Math.abs(deltaZ) > 1e-4) {
+        state.camera.position.x += deltaX;
+        state.camera.position.y += deltaY;
+        state.camera.position.z += deltaZ;
+
+        activeControls.target.set(clamped[0], clamped[1], clamped[2]);
+        activeControls.update?.();
+      }
+
+      // Ground collision clamping for camera position
+      if (state.camera.position.y < 0.25) {
+        state.camera.position.y = 0.25;
+      }
+
+      // Lateral distance from origin for Recenter HUD button visibility
+      const lateralDist = Math.hypot(activeControls.target.x, activeControls.target.z);
+      onTargetOffsetChange?.(lateralDist);
     }
   });
 
@@ -948,6 +1162,7 @@ export function StoneTowerCanvas({
   enablePan = false,
   enableZoom = true,
   selectedStoneId,
+  focusedStoneId,
   hoveredStoneId,
   onHoverStone,
   hoveringPreviewStone,
@@ -957,6 +1172,8 @@ export function StoneTowerCanvas({
   onStoneDragMove,
   onStoneDrop,
   onStoneDragCancel,
+  enableRecenterButton = true,
+  onRecenter,
 }: StoneTowerCanvasProps) {
   const normalizedStones = useMemo(() => normalizeTowerStoneItems(stones), [stones]);
   const nodes = buildTowerSceneGraph(normalizedStones);
@@ -967,6 +1184,10 @@ export function StoneTowerCanvas({
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const orbitControlsRef = useRef<any>(null);
   const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [targetOffsetXZ, setTargetOffsetXZ] = useState(0);
+
+  const showRecenterButton =
+    (enableRecenterButton ?? true) && targetOffsetXZ >= RECENTER_TRIGGER_DISTANCE;
 
   const handleStoneHover = useCallback(
     (stoneId: string | null) => {
@@ -1001,6 +1222,16 @@ export function StoneTowerCanvas({
     }
     return null;
   }, [effectiveSelectedId, nodes]);
+
+  const effectiveFocusedNode = useMemo(() => {
+    if (focusedStoneId) {
+      return nodes.find((n) => n.id === focusedStoneId) ?? null;
+    }
+    if (effectiveSelectedId) {
+      return nodes.find((n) => n.id === effectiveSelectedId) ?? null;
+    }
+    return null;
+  }, [focusedStoneId, effectiveSelectedId, nodes]);
 
   const webGLSupported = useMemo(() => isWebGLAvailable(), []);
   const use3D =
@@ -1153,6 +1384,11 @@ export function StoneTowerCanvas({
             camera={{ position: [0, 1.8, 3.8], fov: 45 }}
             style={{ width: '100%', height: '100%', touchAction: 'none', userSelect: 'none' }}
           >
+            {/* Atmospheric Background & Exponential Fog */}
+            <color attach="background" args={['#0F121A']} />
+            <fogExp2 attach="fog" args={['#0F121A', 0.032]} />
+
+            {/* Lighting Rig */}
             <ambientLight intensity={0.70} />
             <directionalLight
               position={[3.5, 6.0, 4.0]}
@@ -1173,6 +1409,38 @@ export function StoneTowerCanvas({
             />
             <hemisphereLight args={['#F0EDE6', '#2A2E38', 0.55]} />
 
+            {/* Wide Zen Garden Ground Disc (R=28m) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]} receiveShadow>
+              <circleGeometry args={[ZEN_GARDEN_RADIUS, 64]} />
+              <meshStandardMaterial color="#161922" roughness={0.94} metalness={0.03} />
+            </mesh>
+
+            {/* Karesansui Concentric Sand Ripple Rings */}
+            {KARESANSUI_RIPPLE_RADII.map((radius, idx) => (
+              <mesh
+                key={`sand-ripple-${idx}`}
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, -0.008, 0]}
+              >
+                <ringGeometry args={[radius - 0.06, radius + 0.06, 64]} />
+                <meshBasicMaterial color="#262C3A" opacity={0.35} transparent />
+              </mesh>
+            ))}
+
+            {/* Natural Stepping Stones (디딤돌) */}
+            {STEPPING_STONES.map((stone, idx) => (
+              <mesh
+                key={`stepping-stone-${idx}`}
+                position={[stone.x, 0.015, stone.z]}
+                rotation={[0, stone.rotY, 0]}
+                scale={[stone.scaleX, 0.03, stone.scaleZ]}
+                receiveShadow
+              >
+                <cylinderGeometry args={[0.35, 0.42, 1, 16]} />
+                <meshStandardMaterial color={stone.color} roughness={0.85} metalness={0.05} />
+              </mesh>
+            ))}
+
             {/* Circular Ground Pedestal Platform (Dark Mode Stone Contrast) */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} receiveShadow>
               <circleGeometry args={[2.0, 64]} />
@@ -1183,18 +1451,26 @@ export function StoneTowerCanvas({
               <meshBasicMaterial color="#2B3240" opacity={0.65} transparent />
             </mesh>
 
+            {/* Ambient Floating Particles (Count 24) */}
+            <ZenAmbientParticles count={24} />
+
             {enableOrbitControls && (
               <OrbitControls
                 ref={orbitControlsRef}
                 makeDefault
                 enableDamping
                 dampingFactor={0.08}
-                minDistance={1.5}
-                maxDistance={7.0}
+                minDistance={CAMERA_MIN_DISTANCE}
+                maxDistance={CAMERA_MAX_DISTANCE}
                 maxPolarAngle={Math.PI * 0.49}
                 minPolarAngle={0.05}
                 enablePan={enablePan ?? false}
+                screenSpacePanning={true}
                 enableZoom={enableZoom ?? true}
+                touches={{
+                  ONE: THREE.TOUCH.ROTATE,
+                  TWO: THREE.TOUCH.DOLLY_PAN,
+                }}
                 onStart={() => onCameraPresetChange?.('free')}
               />
             )}
@@ -1203,10 +1479,14 @@ export function StoneTowerCanvas({
               preset={cameraPreset}
               towerTopY={towerTopY}
               controlsRef={orbitControlsRef}
+              focusedStoneNode={effectiveFocusedNode}
+              onTargetOffsetChange={setTargetOffsetXZ}
+              onCameraPresetChange={onCameraPresetChange}
             />
 
+            {/* Expanded Ground Shadow Plane (12m x 12m) */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-              <planeGeometry args={[8, 8]} />
+              <planeGeometry args={[12, 12]} />
               <shadowMaterial opacity={0.28} />
             </mesh>
 
@@ -1268,6 +1548,26 @@ export function StoneTowerCanvas({
               phase={phase}
             />
           </Canvas>
+
+          {/* Floating "🎯 돌탑으로 복귀" Recenter Button */}
+          {showRecenterButton && (
+            <View style={styles.recenterButtonWrapper} pointerEvents="box-none">
+              <Pressable
+                style={({ pressed }) => [
+                  styles.recenterButton,
+                  pressed && styles.recenterButtonPressed,
+                ]}
+                onPress={() => {
+                  onCameraPresetChange?.('front');
+                  onRecenter?.();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="돌탑으로 복귀"
+              >
+                <Text style={styles.recenterButtonText}>🎯 돌탑으로 복귀</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       ) : nodes.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -1778,9 +2078,41 @@ const styles = StyleSheet.create({
     height: 320,
     borderRadius: 16,
     overflow: 'hidden',
+    position: 'relative',
   },
   threeCanvas: {
     width: '100%',
     height: '100%',
+  },
+  recenterButtonWrapper: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    zIndex: 50,
+  },
+  recenterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    backgroundColor: 'rgba(24, 27, 34, 0.92)',
+    borderWidth: 1,
+    borderColor: '#3182F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  recenterButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.96 }],
+  },
+  recenterButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 });

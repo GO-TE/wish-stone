@@ -25,6 +25,10 @@ import {
   type CategoryCode,
   TowerKey,
 } from '../../domain/value-objects/TowerKey.ts';
+import {
+  NATURAL_PEBBLE_COLORS,
+  PEBBLE_SHAPE_PROFILES,
+} from '../components/pebbleGeometrySpec.ts';
 
 export type StackPlacementMode = '3d' | 'ar';
 
@@ -194,6 +198,41 @@ export class StackStoneController {
     this.updateState({
       selectedStone: nextStone,
     });
+    return nextStone;
+  }
+
+  /**
+   * F20: 소원 돌 모양 및 12종 자연 광물 색상을 무작위로 다시 뽑고 리스너에 통지 (D-020, M3)
+   */
+  rerollStone(options?: { shape?: StoneShape; color?: string }): Stone {
+    const shapes: readonly StoneShape[] = PEBBLE_SHAPE_PROFILES;
+    const colors: readonly string[] = NATURAL_PEBBLE_COLORS;
+
+    let nextShape = options?.shape;
+    let nextColor = options?.color;
+
+    if (!nextShape) {
+      const candidates = shapes.filter((s) => s !== this.state.selectedStone.shape);
+      const pool = candidates.length > 0 ? candidates : shapes;
+      nextShape = pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    if (!nextColor) {
+      const candidates = colors.filter((c) => c !== this.state.selectedStone.color);
+      const pool = candidates.length > 0 ? candidates : colors;
+      nextColor = pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    const nextStone = new Stone({
+      shape: nextShape,
+      color: nextColor,
+      pose: this.state.selectedStone.pose ?? Pose.origin(),
+    });
+
+    this.updateState({
+      selectedStone: nextStone,
+    });
+
     return nextStone;
   }
 

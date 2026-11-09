@@ -354,10 +354,13 @@ export default function TowerExplorationScreen() {
             onCameraPresetChange={setCameraPreset}
             towerTopY={tower?.topY()}
             selectedStoneId={selectedStone?.id ?? null}
+            focusedStoneId={selectedStone?.id ?? null}
             hoveredStoneId={hoveredStoneId}
             onHoverStone={setHoveredStoneId}
             onSelectStone={(stoneId) => handleSelectStone(stoneId)}
             stones={tower?.stones ?? []}
+            enableRecenterButton={true}
+            onRecenter={() => setCameraPreset('front')}
           />
         )}
 
