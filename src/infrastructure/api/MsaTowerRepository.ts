@@ -11,6 +11,7 @@ import { type CheerLevelValue } from '../../domain/value-objects/CheerLevel.ts';
 import { Pose, type PoseJSON } from '../../domain/value-objects/Pose.ts';
 import { type CategoryCode, TowerKey } from '../../domain/value-objects/TowerKey.ts';
 import { MsaHttpClient } from './MsaHttpClient.ts';
+import { getCachedWishContent, setCachedWishContent } from './wishContentCache.ts';
 
 interface TowerStoneDto {
   id: string;
@@ -65,7 +66,7 @@ export class MsaTowerRepository implements TowerRepository {
       >;
       return {
         id: s.id,
-        content: s.content ?? undefined,
+        content: s.content ?? getCachedWishContent(s.id) ?? undefined,
         category: s.categoryCode ?? undefined,
         stone: new Stone({
           shape: s.stoneShape ?? 'round',
