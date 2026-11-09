@@ -68,7 +68,7 @@ const SHAPE_SPECS: Record<StoneShape, ProceduralStoneGeometrySpec> = {
     segments: 20,
     roughness: 0.92,
     metalness: 0.04,
-    flatShading: true,
+    flatShading: false,
     bevelRadius: 0.12,
   },
   pebble: {
@@ -86,7 +86,7 @@ const SHAPE_SPECS: Record<StoneShape, ProceduralStoneGeometrySpec> = {
     segments: 22,
     roughness: 0.9,
     metalness: 0.05,
-    flatShading: true,
+    flatShading: false,
     bevelRadius: 0.14,
   },
   boulder: {
@@ -95,7 +95,7 @@ const SHAPE_SPECS: Record<StoneShape, ProceduralStoneGeometrySpec> = {
     segments: 16,
     roughness: 0.95,
     metalness: 0.03,
-    flatShading: true,
+    flatShading: false,
     bevelRadius: 0.08,
   },
 };

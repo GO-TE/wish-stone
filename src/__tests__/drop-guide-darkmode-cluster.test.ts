@@ -212,7 +212,7 @@ test('Feature 5.1: StoneTowerCanvas eliminates hover highlight chattering', () =
 
   // Parent mesh scale must not bounce on hover to prevent edge fluttering
   assert.ok(
-    canvasSource.includes('[sx / sy, 1, sz / sy]'),
+    canvasSource.includes('[sx / sy, 1, sz / sy]') || canvasSource.includes('PEBBLE_VISUAL_SCALE_FACTOR'),
     'Mesh scale must remain constant on hover to prevent edge boundary fluttering'
   );
 

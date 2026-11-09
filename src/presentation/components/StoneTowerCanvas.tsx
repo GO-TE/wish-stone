@@ -44,7 +44,10 @@ import {
 export * from './stoneTowerSpec.ts';
 export * from './cameraPresetSpec.ts';
 export * from './stoneDragSpec.ts';
+import { createRiverPebbleGeometry } from './pebbleGeometrySpec.ts';
 export * from './pebbleGeometrySpec.ts';
+
+export const PEBBLE_VISUAL_SCALE_FACTOR = 0.72;
 
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
@@ -136,11 +139,11 @@ interface StoneGeometryProfile {
 }
 
 const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: { baseWidth: 140, baseHeight: 46, rTL: 26, rTR: 22, rBR: 12, rBL: 14 },
-  round: { baseWidth: 118, baseHeight: 52, rTL: 26, rTR: 26, rBR: 14, rBL: 16 },
-  tall: { baseWidth: 88, baseHeight: 68, rTL: 28, rTR: 24, rBR: 14, rBL: 16 },
-  pebble: { baseWidth: 80, baseHeight: 40, rTL: 20, rTR: 22, rBR: 12, rBL: 14 },
-  boulder: { baseWidth: 152, baseHeight: 56, rTL: 30, rTR: 24, rBR: 14, rBL: 16 },
+  flat: { baseWidth: 96, baseHeight: 34, rTL: 22, rTR: 20, rBR: 14, rBL: 15 },
+  round: { baseWidth: 84, baseHeight: 38, rTL: 24, rTR: 24, rBR: 16, rBL: 16 },
+  tall: { baseWidth: 64, baseHeight: 48, rTL: 24, rTR: 22, rBR: 14, rBL: 16 },
+  pebble: { baseWidth: 60, baseHeight: 30, rTL: 18, rTR: 20, rBR: 14, rBL: 14 },
+  boulder: { baseWidth: 104, baseHeight: 42, rTL: 26, rTR: 22, rBR: 16, rBL: 16 },
 };
 
 function pseudoHash(str: string): number {
@@ -242,13 +245,21 @@ function StoneMesh3D({
   }, [node.id, index, meshMapRef]);
 
   const geo = node.geometry;
-  const sx = geo.scale.x * 0.5;
-  const sy = geo.scale.y * 0.5;
-  const sz = geo.scale.z * 0.5;
-  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
-  const meshScale: [number, number, number] = isPolyhedron
-    ? [sx / sy, 1, sz / sy]
-    : [1, 1, 1];
+  const pebbleGeo = useMemo(
+    () =>
+      createRiverPebbleGeometry({
+        shape: geo.shape,
+        scale: geo.scale,
+        flattenedBase: true,
+        seed: 42 + index * 17,
+      }),
+    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z, index]
+  );
+  const meshScale: [number, number, number] = [
+    PEBBLE_VISUAL_SCALE_FACTOR,
+    0.94,
+    PEBBLE_VISUAL_SCALE_FACTOR,
+  ];
 
   return (
     <mesh
@@ -270,17 +281,7 @@ function StoneMesh3D({
         onHover?.(false);
       }}
     >
-      {geo.shape === 'round' ? (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      ) : geo.shape === 'flat' ? (
-        <boxGeometry args={[sx, sy, sz]} />
-      ) : geo.shape === 'tall' ? (
-        <boxGeometry args={[sx, sy, sz]} />
-      ) : geo.shape === 'pebble' ? (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      ) : (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      )}
+      <primitive object={pebbleGeo} attach="geometry" />
       <meshStandardMaterial
         color={node.material.baseColor}
         roughness={isSelected ? 0.3 : node.material.roughness}
@@ -291,17 +292,7 @@ function StoneMesh3D({
       />
       {isHovered && (
         <mesh scale={[1.08, 1.08, 1.08]} raycast={() => null}>
-          {geo.shape === 'round' ? (
-            <dodecahedronGeometry args={[sy * 0.5, 1]} />
-          ) : geo.shape === 'flat' ? (
-            <boxGeometry args={[sx, sy, sz]} />
-          ) : geo.shape === 'tall' ? (
-            <boxGeometry args={[sx, sy, sz]} />
-          ) : geo.shape === 'pebble' ? (
-            <dodecahedronGeometry args={[sy * 0.5, 1]} />
-          ) : (
-            <dodecahedronGeometry args={[sy * 0.5, 1]} />
-          )}
+          <primitive object={pebbleGeo} attach="geometry" />
           <meshBasicMaterial
             color="#3182F6"
             wireframe
@@ -343,13 +334,21 @@ function DroppedStoneMesh3D({
   }, [stone, meshMapRef]);
 
   const geo = buildStoneGeometrySpec(stone.shape);
-  const sx = geo.scale.x * 0.5;
-  const sy = geo.scale.y * 0.5;
-  const sz = geo.scale.z * 0.5;
-  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
-  const meshScale: [number, number, number] = isPolyhedron
-    ? [sx / sy, 1, sz / sy]
-    : [1, 1, 1];
+  const pebbleGeo = useMemo(
+    () =>
+      createRiverPebbleGeometry({
+        shape: geo.shape,
+        scale: geo.scale,
+        flattenedBase: true,
+        seed: 77,
+      }),
+    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+  );
+  const meshScale: [number, number, number] = [
+    PEBBLE_VISUAL_SCALE_FACTOR,
+    0.94,
+    PEBBLE_VISUAL_SCALE_FACTOR,
+  ];
 
   const effectivePose = initialPoseOverride ?? stone.pose;
 
@@ -367,17 +366,7 @@ function DroppedStoneMesh3D({
       castShadow
       receiveShadow
     >
-      {geo.shape === 'round' ? (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      ) : geo.shape === 'flat' ? (
-        <boxGeometry args={[sx, sy, sz]} />
-      ) : geo.shape === 'tall' ? (
-        <boxGeometry args={[sx, sy, sz]} />
-      ) : geo.shape === 'pebble' ? (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      ) : (
-        <dodecahedronGeometry args={[sy * 0.5, 1]} />
-      )}
+      <primitive object={pebbleGeo} attach="geometry" />
       <meshStandardMaterial
         color={stone.color}
         roughness={geo.roughness}
@@ -402,13 +391,21 @@ function HoveringStonePreview3D({
 }) {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const geo = buildStoneGeometrySpec(shape);
-  const sx = geo.scale.x * 0.5;
-  const sy = geo.scale.y * 0.5;
-  const sz = geo.scale.z * 0.5;
-  const isPolyhedron = geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
-  const meshScale: [number, number, number] = isPolyhedron
-    ? [sx / sy, 1, sz / sy]
-    : [1, 1, 1];
+  const pebbleGeo = useMemo(
+    () =>
+      createRiverPebbleGeometry({
+        shape: geo.shape,
+        scale: geo.scale,
+        flattenedBase: true,
+        seed: 99,
+      }),
+    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+  );
+  const meshScale: [number, number, number] = [
+    PEBBLE_VISUAL_SCALE_FACTOR,
+    0.94,
+    PEBBLE_VISUAL_SCALE_FACTOR,
+  ];
 
   const targetY = towerTopY;
   const hoverY = offset.y ?? targetY + 0.42;
@@ -425,17 +422,7 @@ function HoveringStonePreview3D({
   return (
     <group>
       <mesh ref={meshRef} position={[offset.x, hoverY, offset.z]} scale={meshScale} castShadow>
-        {geo.shape === 'round' ? (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        ) : geo.shape === 'flat' ? (
-          <boxGeometry args={[sx, sy, sz]} />
-        ) : geo.shape === 'tall' ? (
-          <boxGeometry args={[sx, sy, sz]} />
-        ) : geo.shape === 'pebble' ? (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        ) : (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        )}
+        <primitive object={pebbleGeo} attach="geometry" />
         <meshStandardMaterial
           color={color}
           roughness={geo.roughness}
@@ -565,14 +552,21 @@ export function InteractiveDraggableStone3D({
   const { camera } = useThree();
   const meshRef = React.useRef<THREE.Mesh>(null);
   const geo = buildStoneGeometrySpec(stone.shape);
-  const sx = geo.scale.x * 0.5;
-  const sy = geo.scale.y * 0.5;
-  const sz = geo.scale.z * 0.5;
-  const isPolyhedron =
-    geo.shape === 'round' || geo.shape === 'pebble' || geo.shape === 'boulder';
-  const meshScale: [number, number, number] = isPolyhedron
-    ? [sx / sy, 1, sz / sy]
-    : [1, 1, 1];
+  const pebbleGeo = useMemo(
+    () =>
+      createRiverPebbleGeometry({
+        shape: geo.shape,
+        scale: geo.scale,
+        flattenedBase: true,
+        seed: 108,
+      }),
+    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+  );
+  const meshScale: [number, number, number] = [
+    PEBBLE_VISUAL_SCALE_FACTOR,
+    0.94,
+    PEBBLE_VISUAL_SCALE_FACTOR,
+  ];
 
   // Camera azimuth angle tracking: ensures unplaced stone is ALWAYS in front of user's camera
   const [cameraAzimuth, setCameraAzimuth] = useState(0);
@@ -900,17 +894,7 @@ export function InteractiveDraggableStone3D({
         castShadow
         onPointerDown={handlePointerDown}
       >
-        {geo.shape === 'round' ? (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        ) : geo.shape === 'flat' ? (
-          <boxGeometry args={[sx, sy, sz]} />
-        ) : geo.shape === 'tall' ? (
-          <boxGeometry args={[sx, sy, sz]} />
-        ) : geo.shape === 'pebble' ? (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        ) : (
-          <dodecahedronGeometry args={[sy * 0.5, 1]} />
-        )}
+        <primitive object={pebbleGeo} attach="geometry" />
         <meshStandardMaterial
           color={stone.color}
           roughness={geo.roughness}

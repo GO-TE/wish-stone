@@ -138,3 +138,11 @@
   1. `pebbleGeometrySpec.ts`를 통해 하단 안착면 평탄화($y = -H_y$)와 부드러운 법선(`flatShading: false`)이 적용된 구면 조화 강자갈 지오메트리를 생성하되, 물리 충돌 바운딩 박스($\text{halfExtents} = \text{scale} \times 0.25$) 불변식을 유지한다.
   2. 현무암, 백운석, 황토 규암 등 12종의 자연 광물 팔레트를 적용한다.
   3. `StackStoneController.rerollStone()` 및 `[ 🎲 다른 돌 찾아보기 ]` UI 버튼을 돌 선택 화면과 쌓기 화면에 통합하여 캔버스 깜빡임 없이 즉각 새로운 돌을 뽑을 수 있게 한다.
+
+
+### D-027: v2.1 돌쌓기 UX 정제 — 실패 액션/경고 문구 제거(재시도 플로우 유지), 네모난 돌 전면 삭제, 돌 크기 축소 및 랜덤 전용 뽑기 UI 전환
+- **맥락**: 돌탑 쌓기 과정의 부정적 실패 피드백(`중심을 잃고 굴러떨어지는 중`, 붕괴 경고 배너, 전복 테스트 버튼), 3D/2D 내 각진 직육면체(`<boxGeometry>`) 돌 잔존, 다소 큰 돌 시각 크기, 수동 모양/색상 선택 UI에 대한 사용성 개선 요청이 있었다.
+- **결정**:
+  1. `src/app/stack/place.tsx`에서 실패 테스트 버튼(`빗맞힘 테스트 (전복)`), 붉은 붕괴 경고 배너(`collapsedBox`), 부정적 문구(`중심을 잃고 굴러떨어지는 중...`)를 모두 제거하고 평온한 안내 문구로 전환하되, 재시도 플로우(`FALLEN_CHOICE` → `↺ 다시 올려보기` / `⛰️ 이 자리에 그대로 두기`)는 그대로 유지한다.
+  2. `src/presentation/components/StoneTowerCanvas.tsx`에서 모든 `<boxGeometry>` 및 `<dodecahedronGeometry>`를 제거하고 전 형상에 `createRiverPebbleGeometry`와 `flatShading: false`를 일괄 적용하여 네모난 돌을 완전히 삭제한다.
+  3. 3D/2D 조약돌 시각 크기를 아담하게 축소(`PEBBLE_VISUAL_SCALE_FACTOR = 0.72` 및 컴팩트 `SHAPE_PROFILES`)하고, `src/app/stack/stone.tsx`의 수동 모양/색상 선택 UI를 삭제하여 오직 `[ 🎲 다른 돌 찾아보기 ]` 랜덤 뽑기로만 조약돌을 만나도록 일원화한다.

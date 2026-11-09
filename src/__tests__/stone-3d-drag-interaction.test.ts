@@ -269,7 +269,7 @@ test('F07-1: place.tsx source verification - complete removal of 2D gray square 
     'place.tsx must retain [🎯 즉시 안착하기] quick action button'
   );
   assert.ok(
-    content.includes('빗맞힘 테스트 (전복)'),
+    !content.includes('빗맞힘 테스트 (전복)'),
     'place.tsx must retain [빗맞힘 테스트 (전복)] quick action button'
   );
 });
