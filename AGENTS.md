@@ -9,14 +9,14 @@
 - Commit changes by logical unit using Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `style:`) whenever a unit of work is completed.
 
 ## At the start of the operation
-1. Read PROJECT_CONTEXT.md.
-2. Read TASKS.md to understand the current progress.
-3. Check DECISIONS.md to review the existing decisions.
+1. Read `docs/PROJECT_CONTEXT.md`.
+2. Read `docs/TASKS.md` to understand the current progress.
+3. Check `docs/DECISIONS.md` to review the existing decisions.
 4. Check `docs/GIT_BRANCHING_STRATEGY.md` to ensure working on the appropriate `feature/*` or `develop` branch.
 
 ## At task completion
-1. Update the progress on TASKS.md .
-2. Record important technical decisions at DECISIONS.md .
+1. Update the progress on `docs/TASKS.md`.
+2. Record important technical decisions at `docs/DECISIONS.md`.
 3. Summarize the changed code and the test results.
 4. Record incomplete tasks and precautions.
 5. Commit changes by logical unit.
