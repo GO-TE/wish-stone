@@ -20,6 +20,7 @@ import {
   TowerKey,
 } from '../../domain/value-objects/TowerKey.ts';
 import { MsaHttpClient } from './MsaHttpClient.ts';
+import { setCachedWishContent } from './wishContentCache.ts';
 
 interface WishDto {
   id: string;
@@ -65,6 +66,7 @@ export class MsaWishRepository implements WishRepository {
         pose: input.stone.pose.toJSON(),
       }
     );
+    setCachedWishContent(res.id, input.content);
     return res.id;
   }
 
@@ -143,6 +145,9 @@ export class MsaWishRepository implements WishRepository {
   }
 
   private toDomain(dto: WishDto, defaultIsMine = false): Wish {
+    if (dto.id && dto.content) {
+      setCachedWishContent(dto.id, dto.content);
+    }
     const scope = dto.groupId
       ? TowerKey.group(dto.groupId)
       : TowerKey.global();

@@ -17,6 +17,7 @@ import {
   type CategoryCode,
   TowerKey,
 } from '../../domain/value-objects/TowerKey.ts';
+import { getCachedWishContent, setCachedWishContent } from '../../infrastructure/api/wishContentCache.ts';
 import { getSharedAppContainer } from '../../infrastructure/di/AppContainer.ts';
 import { CheerSparkEffect } from '../../presentation/components/CheerSparkEffect.tsx';
 import {
@@ -196,7 +197,35 @@ export default function TowerExplorationScreen() {
       setSelectedStone(null);
     } else {
       setOverlappingCluster(null);
-      setSelectedStone(clicked);
+      const resolvedContent = clicked.content ?? getCachedWishContent(stoneId);
+      setSelectedStone({
+        ...clicked,
+        content: resolvedContent,
+      });
+      if (!resolvedContent) {
+        const wishesRepo = container.repositories?.wishes as any;
+        Promise.all([
+          typeof wishesRepo?.random === 'function'
+            ? wishesRepo.random(200, []).catch(() => [])
+            : Promise.resolve([]),
+          typeof wishesRepo?.mine === 'function'
+            ? wishesRepo.mine().catch(() => [])
+            : Promise.resolve([]),
+        ]).then(([rnd, mine]) => {
+          const allWishes = [...(rnd ?? []), ...(mine ?? [])];
+          for (const w of allWishes) {
+            if (w?.id && w?.content) setCachedWishContent(w.id, w.content);
+          }
+          const matched = allWishes.find((w) => w?.id === stoneId);
+          if (matched?.content) {
+            setSelectedStone((prev) =>
+              prev && prev.id === stoneId
+                ? { ...prev, content: matched.content }
+                : prev
+            );
+          }
+        });
+      }
     }
   };
 

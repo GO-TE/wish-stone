@@ -4,6 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Stone, type StoneShape } from '../../domain/entities/Stone.ts';
+import { getCachedWishContent } from '../../infrastructure/api/wishContentCache.ts';
 import { type TowerStoneItem } from '../../domain/entities/Tower.ts';
 import { type WishId } from '../../domain/entities/Wish.ts';
 import { type SimulationFrame } from '../../domain/ports/PhysicsWorld.ts';
@@ -178,7 +179,11 @@ function normalizeTowerStoneItems(
 ): TowerStoneItem[] {
   return stones.map((item, index) => {
     if ('stone' in item && item.stone instanceof Stone) {
-      return item as TowerStoneItem;
+      const tsItem = item as TowerStoneItem;
+      return {
+        ...tsItem,
+        content: tsItem.content ?? getCachedWishContent(tsItem.id),
+      };
     }
     const stone = item as Stone;
     const customId = (stone as unknown as { id?: string }).id ?? `stone-${index}`;
@@ -224,11 +229,11 @@ interface StoneGeometryProfile {
 }
 
 const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: { baseWidth: 84, baseHeight: 34, rTL: 22, rTR: 20, rBR: 14, rBL: 15 },
-  round: { baseWidth: 78, baseHeight: 38, rTL: 24, rTR: 24, rBR: 16, rBL: 16 },
-  tall: { baseWidth: 74, baseHeight: 36, rTL: 22, rTR: 22, rBR: 16, rBL: 16 },
-  pebble: { baseWidth: 64, baseHeight: 32, rTL: 18, rTR: 20, rBR: 14, rBL: 14 },
-  boulder: { baseWidth: 88, baseHeight: 40, rTL: 26, rTR: 22, rBR: 16, rBL: 16 },
+  flat: { baseWidth: 54, baseHeight: 20, rTL: 14, rTR: 13, rBR: 9, rBL: 10 },
+  round: { baseWidth: 48, baseHeight: 24, rTL: 16, rTR: 16, rBR: 11, rBL: 11 },
+  tall: { baseWidth: 46, baseHeight: 22, rTL: 15, rTR: 15, rBR: 10, rBL: 10 },
+  pebble: { baseWidth: 40, baseHeight: 18, rTL: 12, rTR: 13, rBR: 9, rBL: 9 },
+  boulder: { baseWidth: 58, baseHeight: 26, rTL: 17, rTR: 15, rBR: 11, rBL: 11 },
 };
 
 function pseudoHash(str: string): number {
@@ -1980,16 +1985,16 @@ export function StoneTowerCanvas({
                     if (isBaseTier && tier.stones.length === 2) {
                       if (sIdx === 0) {
                         // 좌측 돌: 왼쪽이 높고 오른쪽이 완만하게 내려감
-                        rTL = 32;
-                        rTR = 18;
-                        rBR = 10;
-                        rBL = 14;
+                        rTL = 18;
+                        rTR = 12;
+                        rBR = 8;
+                        rBL = 10;
                       } else {
                         // 우측 돌: 오른쪽이 높고 왼쪽이 완만하게 내려감
-                        rTL = 18;
-                        rTR = 32;
-                        rBR = 14;
-                        rBL = 10;
+                        rTL = 12;
+                        rTR = 18;
+                        rBR = 10;
+                        rBL = 8;
                       }
                     }
 
@@ -2130,14 +2135,20 @@ export function StoneTowerCanvas({
             <View
               style={[
                 styles.groundShadow,
-                { width: tiers[0]?.stones.length > 1 ? 210 : 150 },
+                { width: tiers[0]?.stones.length > 1 ? 120 : 84 },
               ]}
             />
           </View>
 
-          {/* 선택한 돌 정보 툴팁 */}
-          {showControls && (
-            effectiveSelectedNode ? (
+          {/* 선택한 돌 정보 및 소원 내용 툴팁 */}
+          {effectiveSelectedNode ? (() => {
+            const matchedItem = normalizedStones.find(
+              (s) => s.id === effectiveSelectedNode.id
+            );
+            const wishText =
+              matchedItem?.content ??
+              getCachedWishContent(effectiveSelectedNode.id);
+            return (
               <View style={styles.infoPill}>
                 <Text style={styles.infoPillText}>
                   {effectiveSelectedNode.nicknameLabel
@@ -2147,13 +2158,16 @@ export function StoneTowerCanvas({
                     ? ` · ${effectiveSelectedNode.decoration.label}`
                     : ''}
                 </Text>
+                <Text style={styles.infoPillWishContent}>
+                  "{wishText || '소원이 이루어지기를 바랍니다'}"
+                </Text>
               </View>
-            ) : (
-              <Text style={styles.guideHintText}>
-                돌탑의 돌을 터치하여 소원을 살펴보세요
-              </Text>
-            )
-          )}
+            );
+          })() : showControls ? (
+            <Text style={styles.guideHintText}>
+              돌탑의 돌을 터치하여 소원을 살펴보세요
+            </Text>
+          ) : null}
         </View>
       )}
     </View>
@@ -2263,8 +2277,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   drag2DTargetOval: {
-    width: 68,
-    height: 12,
+    width: 48,
+    height: 10,
     borderRadius: 6,
     borderWidth: 1.5,
   },
@@ -2448,9 +2462,17 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   infoPillText: {
-    color: '#E5E7EB',
-    fontSize: 11,
+    color: '#94A3B8',
+    fontSize: 10,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  infoPillWishContent: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+    textAlign: 'center',
   },
   guideHintText: {
     color: '#6B7280',
@@ -2466,12 +2488,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyStoneShape: {
-    width: 110,
-    height: 48,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 18,
-    borderBottomLeftRadius: 20,
+    width: 56,
+    height: 24,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 10,
+    borderBottomLeftRadius: 11,
     backgroundColor: '#2D323F',
     borderTopWidth: 2.5,
     borderTopColor: 'rgba(255, 255, 255, 0.15)',

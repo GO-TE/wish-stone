@@ -15,6 +15,7 @@ import {
   type CategoryCode,
   TowerKey,
 } from '../domain/value-objects/TowerKey.ts';
+import { getCachedWishContent, setCachedWishContent } from '../infrastructure/api/wishContentCache.ts';
 import { getSharedAppContainer } from '../infrastructure/di/AppContainer.ts';
 import { CheerSparkEffect } from '../presentation/components/CheerSparkEffect.tsx';
 import { StoneTowerCanvas } from '../presentation/components/StoneTowerCanvas.tsx';
@@ -93,7 +94,12 @@ export default function HomeScreen({ initialUnreadCheerCount }: HomeScreenProps 
   useEffect(() => {
     controller
       .loadDashboard(TowerKey.global())
-      .then((next) => setState({ ...next }))
+      .then((next) => {
+        for (const w of next.randomCards ?? []) {
+          setCachedWishContent(w.id, w.content);
+        }
+        setState({ ...next });
+      })
       .catch(() => {});
 
     if (initialUnreadCheerCount !== undefined) {
@@ -287,9 +293,44 @@ export default function HomeScreen({ initialUnreadCheerCount }: HomeScreenProps 
               cameraPreset="front"
               towerTopY={state.tower?.topY() ?? 1.0}
               onSelectStone={(stoneId: WishId) => {
-                // SCR-04 in-place modal: previously onSelectStone={() => router.push('/tower')}
+                // SCR-04 in-place modal: previously onSelectStone={() => router.push('/tower')} setSelectedStone(found);
                 const found = state.tower?.stones.find((s) => s.id === stoneId) ?? null;
-                setSelectedStone(found);
+                if (!found) {
+                  setSelectedStone(null);
+                  return;
+                }
+                const resolvedContent =
+                  found.content ??
+                  state.randomCards.find((w) => w.id === stoneId)?.content ??
+                  getCachedWishContent(stoneId);
+                setSelectedStone({
+                  ...found,
+                  content: resolvedContent,
+                });
+                if (!resolvedContent) {
+                  const repos = getSharedAppContainer().repositories;
+                  Promise.all([
+                    typeof repos.wishes?.random === 'function'
+                      ? repos.wishes.random(200, []).catch(() => [])
+                      : Promise.resolve([]),
+                    typeof repos.wishes?.mine === 'function'
+                      ? repos.wishes.mine().catch(() => [])
+                      : Promise.resolve([]),
+                  ]).then(([rnd, mine]) => {
+                    const allWishes = [...(rnd ?? []), ...(mine ?? [])];
+                    for (const w of allWishes) {
+                      if (w?.id && w?.content) setCachedWishContent(w.id, w.content);
+                    }
+                    const matched = allWishes.find((w) => w?.id === stoneId);
+                    if (matched?.content) {
+                      setSelectedStone((prev) =>
+                        prev && prev.id === stoneId
+                          ? { ...prev, content: matched.content }
+                          : prev
+                      );
+                    }
+                  });
+                }
               }}
             />
             <CheerSparkEffect
