@@ -363,6 +363,7 @@ export default function PlaceStone3DScreen() {
         <Text
           style={[
             styles.status,
+            (phase === 'IDLE' || phase === 'PLACING') && { display: 'none' },
             phase === 'FALLEN_CHOICE' && styles.statusPeaceful,
             phase === 'SETTLED' && styles.statusSuccess,
           ]}
@@ -451,7 +452,7 @@ export default function PlaceStone3DScreen() {
         </View>
 
         {/* Floating Reroll Action Button (F21) */}
-        {!isBusy && (
+        {false && !isBusy && (
           <View style={styles.floatingRerollContainer}>
             <Pressable
               style={({ pressed }) => [
@@ -664,6 +665,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   floatingRerollContainer: {
+    display: 'none',
     position: 'absolute',
     top: 56,
     right: 14,

@@ -448,7 +448,7 @@ export default function HomeScreen({ initialUnreadCheerCount }: HomeScreenProps 
           accessibilityLabel="소원 돌 올리기"
           accessibilityRole="button"
         >
-          <Text style={styles.stackMainButtonIcon}>🪨</Text>
+          <Text style={styles.stackMainButtonIcon}>⛰️</Text>
           <Text style={styles.stackMainButtonText}>소원 돌 올리기</Text>
         </Pressable>
       </View>
@@ -653,6 +653,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   towerHeaderActions: {
+    display: 'none',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

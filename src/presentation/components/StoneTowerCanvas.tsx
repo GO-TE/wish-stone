@@ -1543,7 +1543,7 @@ export function StoneTowerCanvas({
       ]}
     >
       {/* 컨트롤 패널 (showControls = true 일 때만 표시) */}
-      {showControls && (
+      {false && showControls && (
         <View style={styles.controlsArea}>
           <View style={styles.styleSelector}>
             <Pressable
@@ -2163,7 +2163,7 @@ export function StoneTowerCanvas({
                 </Text>
               </View>
             );
-          })() : showControls ? (
+          })() : !activeStoneInstance ? (
             <Text style={styles.guideHintText}>
               돌탑의 돌을 터치하여 소원을 살펴보세요
             </Text>
@@ -2270,6 +2270,7 @@ const styles = StyleSheet.create({
     zIndex: 90,
   },
   drag2DGuideBeam: {
+    display: 'none',
     width: 2,
     height: 28,
     borderRadius: 1,
@@ -2277,6 +2278,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   drag2DTargetOval: {
+    display: 'none',
     width: 48,
     height: 10,
     borderRadius: 6,
