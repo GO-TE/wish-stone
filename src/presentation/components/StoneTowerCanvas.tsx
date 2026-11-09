@@ -229,11 +229,11 @@ interface StoneGeometryProfile {
 }
 
 const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: { baseWidth: 54, baseHeight: 20, rTL: 14, rTR: 13, rBR: 9, rBL: 10 },
-  round: { baseWidth: 48, baseHeight: 24, rTL: 16, rTR: 16, rBR: 11, rBL: 11 },
-  tall: { baseWidth: 46, baseHeight: 22, rTL: 15, rTR: 15, rBR: 10, rBL: 10 },
-  pebble: { baseWidth: 40, baseHeight: 18, rTL: 12, rTR: 13, rBR: 9, rBL: 9 },
-  boulder: { baseWidth: 58, baseHeight: 26, rTL: 17, rTR: 15, rBR: 11, rBL: 11 },
+  flat: { baseWidth: 74, baseHeight: 28, rTL: 20, rTR: 18, rBR: 12, rBL: 13 },
+  round: { baseWidth: 68, baseHeight: 33, rTL: 22, rTR: 21, rBR: 14, rBL: 14 },
+  tall: { baseWidth: 64, baseHeight: 31, rTL: 21, rTR: 21, rBR: 13, rBL: 13 },
+  pebble: { baseWidth: 56, baseHeight: 26, rTL: 17, rTR: 18, rBR: 11, rBL: 11 },
+  boulder: { baseWidth: 78, baseHeight: 35, rTL: 23, rTR: 20, rBR: 14, rBL: 14 },
 };
 
 function pseudoHash(str: string): number {
@@ -1393,6 +1393,37 @@ export function StoneTowerCanvas({
     setRandomSeed((prev) => (prev * 1664525 + 1013904223) % 100000);
   };
 
+  // ⭐️ 2D Real-Time Physics Motion & Drop Animation Engine
+  const [motion2D, setMotion2D] = useState<{
+    animating: boolean;
+    x: number;
+    y: number;
+    rotation: number;
+    scaleX: number;
+    scaleY: number;
+    towerShockY: number;
+    isFallen: boolean;
+  }>({
+    animating: false,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    towerShockY: 0,
+    isFallen: false,
+  });
+  const motionAnimFrameRef = useRef<number | null>(null);
+
+  // Clean up motion animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (motionAnimFrameRef.current) {
+        cancelAnimationFrame(motionAnimFrameRef.current);
+      }
+    };
+  }, []);
+
   // v2.3: 2D Interactive Pebble Drag-and-Drop State
   const [isDragging2D, setIsDragging2D] = useState(false);
   const [drag2DOffset, setDrag2DOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1820,40 +1851,41 @@ export function StoneTowerCanvas({
       ) : (
         <View style={styles.towerStage}>
           {/* 2D Interactive Draggable Stone Zone (올리기 전 & 드래그 중) */}
-          {activeStoneInstance && !droppedStone && (phase === 'IDLE' || phase === 'PLACING' || !phase) ? (() => {
+          {/* ⭐️ Active Draggable Stone OR In-Flight Physics Motion Stone */}
+          {(motion2D.animating || (activeStoneInstance && !droppedStone && (phase === 'IDLE' || phase === 'PLACING' || !phase))) ? (() => {
+            const stoneToRender = activeStoneInstance || droppedStone;
+            if (!stoneToRender) return null;
             const activeProfile =
-              SHAPE_BASE_PROFILES[activeStoneInstance.shape] ?? SHAPE_BASE_PROFILES.round;
-            const activeW = Math.round(activeProfile.baseWidth * 0.92);
-            const activeH = Math.round(activeProfile.baseHeight * 0.92);
+              SHAPE_BASE_PROFILES[stoneToRender.shape] ?? SHAPE_BASE_PROFILES.round;
+            const activeW = Math.round(activeProfile.baseWidth * 0.95);
+            const activeH = Math.round(activeProfile.baseHeight * 0.95);
             const guideColor =
               drag2DBalance === 'stable'
                 ? '#3182F6'
                 : drag2DBalance === 'caution'
                 ? '#FFB300'
                 : '#FF6B6B';
-            const guideLabel = isDragging2D
-              ? drag2DBalance === 'stable'
-                ? '✨ 균형이 잘 맞았습니다 · 손을 놓아 올려보세요'
-                : drag2DBalance === 'caution'
-                ? '⚖️ 중심이 살짝 비껴나 아슬아슬해요'
-                : '🍃 중심에서 벗어나 바닥에 내려앉을 수 있어요'
-              : '✋ 돌을 좌우로 끌어 균형을 맞춘 뒤 손을 놓아보세요';
+
+            // Coordinates: if physics engine is animating, use motion2D coordinates!
+            const renderX = motion2D.animating ? motion2D.x : drag2DOffset.x;
+            const renderY = motion2D.animating ? motion2D.y : drag2DOffset.y;
+            const renderRot = motion2D.animating ? `${motion2D.rotation}deg` : '0deg';
+            const renderScaleX = motion2D.animating ? motion2D.scaleX : isDragging2D ? 1.05 : 1;
+            const renderScaleY = motion2D.animating ? motion2D.scaleY : isDragging2D ? 1.05 : 1;
 
             return (
               <View style={styles.drag2DStageArea}>
-                <Text style={[styles.drag2DHintText, { color: isDragging2D ? guideColor : '#94A3B8' }]}>
-                  {guideLabel}
-                </Text>
-
                 <View
                   onPointerDown={handle2DPointerDown as any}
                   style={[
                     styles.draggable2DPebbleWrapper,
                     {
                       transform: [
-                        { translateX: drag2DOffset.x },
-                        { translateY: drag2DOffset.y },
-                        { scale: isDragging2D ? 1.06 : 1 },
+                        { translateX: renderX },
+                        { translateY: renderY },
+                        { rotate: renderRot },
+                        { scaleX: renderScaleX },
+                        { scaleY: renderScaleY },
                       ],
                     },
                   ]}
@@ -1868,36 +1900,15 @@ export function StoneTowerCanvas({
                         borderTopRightRadius: activeProfile.rTR,
                         borderBottomRightRadius: activeProfile.rBR,
                         borderBottomLeftRadius: activeProfile.rBL,
-                        backgroundColor: activeStoneInstance.color || '#64748B',
-                        borderColor: guideColor,
-                        borderWidth: isDragging2D ? 2.5 : 1.5,
+                        backgroundColor: stoneToRender.color || '#64748B',
+                        borderColor: isDragging2D ? guideColor : 'transparent',
+                        borderWidth: isDragging2D ? 2 : 1,
                       },
                     ]}
                   >
                     <View style={styles.stoneSurfaceHighlight} />
                   </View>
                 </View>
-
-                <View
-                  style={[
-                    styles.drag2DGuideBeam,
-                    {
-                      backgroundColor: guideColor,
-                      opacity: isDragging2D ? 0.75 : 0.35,
-                      transform: [{ translateX: drag2DOffset.x }],
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.drag2DTargetOval,
-                    {
-                      borderColor: guideColor,
-                      backgroundColor: isDragging2D ? 'rgba(49, 130, 246, 0.18)' : 'rgba(49, 130, 246, 0.08)',
-                      transform: [{ translateX: drag2DOffset.x }],
-                    },
-                  ]}
-                />
               </View>
             );
           })() : (
@@ -1907,7 +1918,7 @@ export function StoneTowerCanvas({
           )}
 
           {/* 안착 성공(SETTLED / BALANCING) 시 꼭대기에 얹힌 새 소원 돌 2D 표시 */}
-          {droppedStone && (phase === 'SETTLED' || phase === 'BALANCING') && (() => {
+          {droppedStone && !motion2D.animating && (phase === 'SETTLED' || phase === 'BALANCING') && (() => {
             const dProfile = SHAPE_BASE_PROFILES[droppedStone.shape] ?? SHAPE_BASE_PROFILES.round;
             const dW = Math.round(dProfile.baseWidth * 0.9);
             const dH = Math.round(dProfile.baseHeight * 0.9);
@@ -1935,7 +1946,7 @@ export function StoneTowerCanvas({
           })()}
 
           {/* 돌탑 적층 뷰포트 (바닥단부터 위로 column-reverse) */}
-          <View style={styles.stackedTiersColumn}>
+          <View style={[styles.stackedTiersColumn, motion2D.towerShockY !== 0 && { transform: [{ translateY: motion2D.towerShockY }] }]}>
             {tiers.map((tier, tIdx) => {
               const isBaseTier = tIdx === 0;
               return (
@@ -1958,10 +1969,10 @@ export function StoneTowerCanvas({
                     // 한 층에 돌이 2~3개 있을 때 폭/높이 비례 조정 (자연스러운 탑형 피라미드 비례)
                     const scaleFactor =
                       tier.stones.length === 1
-                        ? 0.92
+                        ? 1.0
                         : tier.stones.length === 2
-                        ? 0.62
-                        : 0.48;
+                        ? 0.72
+                        : 0.54;
 
                     const widthJitter = 0.9 + (hash % 20) / 100;
                     const heightJitter = 0.9 + ((hash >> 2) % 20) / 100;
@@ -1985,16 +1996,16 @@ export function StoneTowerCanvas({
                     if (isBaseTier && tier.stones.length === 2) {
                       if (sIdx === 0) {
                         // 좌측 돌: 왼쪽이 높고 오른쪽이 완만하게 내려감
-                        rTL = 18;
-                        rTR = 12;
-                        rBR = 8;
-                        rBL = 10;
+                        rTL = 26;
+                        rTR = 16;
+                        rBR = 10;
+                        rBL = 14;
                       } else {
                         // 우측 돌: 오른쪽이 높고 왼쪽이 완만하게 내려감
-                        rTL = 12;
-                        rTR = 18;
-                        rBR = 10;
-                        rBL = 8;
+                        rTL = 16;
+                        rTR = 26;
+                        rBR = 14;
+                        rBL = 10;
                       }
                     }
 
@@ -2101,7 +2112,7 @@ export function StoneTowerCanvas({
           </View>
 
           {/* 정원 바닥에 내려앉은 돌 (COLLAPSING / FALLEN_CHOICE 상태) */}
-          {droppedStone && (phase === 'COLLAPSING' || phase === 'FALLEN_CHOICE') && (() => {
+          {droppedStone && !motion2D.animating && (phase === 'COLLAPSING' || phase === 'FALLEN_CHOICE') && (() => {
             const fProfile = SHAPE_BASE_PROFILES[droppedStone.shape] ?? SHAPE_BASE_PROFILES.round;
             const fW = Math.round(fProfile.baseWidth * 0.85);
             const fH = Math.round(fProfile.baseHeight * 0.85);
@@ -2135,7 +2146,7 @@ export function StoneTowerCanvas({
             <View
               style={[
                 styles.groundShadow,
-                { width: tiers[0]?.stones.length > 1 ? 120 : 84 },
+                { width: tiers[0]?.stones.length > 1 ? 180 : 124 },
               ]}
             />
           </View>
@@ -2244,9 +2255,10 @@ const styles = StyleSheet.create({
   },
   towerStage: {
     width: '100%',
+    minHeight: 330,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 2,
+    paddingBottom: 6,
   },
   topSparkleContainer: {
     marginBottom: 2,
@@ -2254,7 +2266,8 @@ const styles = StyleSheet.create({
   drag2DStageArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    height: 120,
+    marginBottom: 4,
     width: '100%',
     zIndex: 80,
   },
