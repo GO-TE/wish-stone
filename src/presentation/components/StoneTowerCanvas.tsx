@@ -49,6 +49,91 @@ export * from './pebbleGeometrySpec.ts';
 
 export const PEBBLE_VISUAL_SCALE_FACTOR = 0.72;
 
+/**
+ * v2.2 동그란 자갈돌 전용 3D 비주얼 스케일 프로필 (길쭉한 기둥형 돌 완전 배제)
+ * - 모든 StoneShape('round', 'flat', 'pebble', 'tall', 'boulder')를 아담하고 동그란 자갈돌 비례로 정규화
+ * - createRiverPebbleGeometry의 halfExtents = scale * 0.25 불변식과 1:1 일치하도록 meshScale=[1,1,1] 사용
+ */
+export const ROUND_PEBBLE_VISUAL_SCALES: Readonly<
+  Record<StoneShape, { readonly x: number; readonly y: number; readonly z: number }>
+> = {
+  pebble: { x: 0.56, y: 0.40, z: 0.54 },
+  round: { x: 0.64, y: 0.46, z: 0.62 },
+  flat: { x: 0.68, y: 0.42, z: 0.66 },
+  tall: { x: 0.60, y: 0.44, z: 0.58 },
+  boulder: { x: 0.72, y: 0.50, z: 0.70 },
+};
+
+export function getRoundPebbleVisualScale(shape: StoneShape): {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+} {
+  return ROUND_PEBBLE_VISUAL_SCALES[shape] ?? ROUND_PEBBLE_VISUAL_SCALES.round;
+}
+
+/**
+ * v2.2 공중부양 방지 (Grounded 3D Node Resolver)
+ * - 각 돌의 실제 (x, z) 위치 아래에 겹치는 하부 돌이 있는지 검사하여
+ *   바닥(y = 0) 또는 하부 지지석 상단 표면(supportTopY)에 빈틈없이 밀착시킨다.
+ */
+export function resolveLocalSupportTopY(
+  x: number,
+  z: number,
+  horizontalRadius: number,
+  groundedNodes: readonly StoneRenderNode[]
+): number {
+  let supportTopY = 0;
+  for (const prev of groundedNodes) {
+    const prevScale = getRoundPebbleVisualScale(prev.geometry.shape);
+    const prevHx = prevScale.x * 0.25;
+    const prevHy = prevScale.y * 0.25;
+    const prevHz = prevScale.z * 0.25;
+    const prevRadius = Math.max(prevHx, prevHz);
+    const distXZ = Math.hypot(x - prev.position.x, z - prev.position.z);
+    if (distXZ <= (horizontalRadius + prevRadius) * 0.88) {
+      const candidateTopY = prev.position.y + prevHy;
+      if (candidateTopY > supportTopY) {
+        supportTopY = candidateTopY;
+      }
+    }
+  }
+  return Number(supportTopY.toFixed(4));
+}
+
+export function resolveGrounded3DNodes(
+  rawNodes: readonly StoneRenderNode[]
+): StoneRenderNode[] {
+  const grounded: StoneRenderNode[] = [];
+  for (const node of rawNodes) {
+    const vScale = getRoundPebbleVisualScale(node.geometry.shape);
+    const hx = vScale.x * 0.25;
+    const hy = vScale.y * 0.25;
+    const hz = vScale.z * 0.25;
+    const radius = Math.max(hx, hz);
+    const supportTopY = resolveLocalSupportTopY(
+      node.position.x,
+      node.position.z,
+      radius,
+      grounded
+    );
+    const groundedY = Number((supportTopY + hy).toFixed(4));
+    grounded.push({
+      ...node,
+      geometry: {
+        ...node.geometry,
+        scale: vScale,
+      },
+      position: {
+        x: node.position.x,
+        y: groundedY,
+        z: node.position.z,
+      },
+    });
+  }
+  return grounded;
+}
+
 export type TowerArchStyle = 'cairn' | 'pebble' | 'gem';
 
 export interface StoneTowerCanvasProps {
@@ -139,11 +224,11 @@ interface StoneGeometryProfile {
 }
 
 const SHAPE_BASE_PROFILES: Record<StoneShape, StoneGeometryProfile> = {
-  flat: { baseWidth: 96, baseHeight: 34, rTL: 22, rTR: 20, rBR: 14, rBL: 15 },
-  round: { baseWidth: 84, baseHeight: 38, rTL: 24, rTR: 24, rBR: 16, rBL: 16 },
-  tall: { baseWidth: 64, baseHeight: 48, rTL: 24, rTR: 22, rBR: 14, rBL: 16 },
-  pebble: { baseWidth: 60, baseHeight: 30, rTL: 18, rTR: 20, rBR: 14, rBL: 14 },
-  boulder: { baseWidth: 104, baseHeight: 42, rTL: 26, rTR: 22, rBR: 16, rBL: 16 },
+  flat: { baseWidth: 84, baseHeight: 34, rTL: 22, rTR: 20, rBR: 14, rBL: 15 },
+  round: { baseWidth: 78, baseHeight: 38, rTL: 24, rTR: 24, rBR: 16, rBL: 16 },
+  tall: { baseWidth: 74, baseHeight: 36, rTL: 22, rTR: 22, rBR: 16, rBL: 16 },
+  pebble: { baseWidth: 64, baseHeight: 32, rTL: 18, rTR: 20, rBR: 14, rBL: 14 },
+  boulder: { baseWidth: 88, baseHeight: 40, rTL: 26, rTR: 22, rBR: 16, rBL: 16 },
 };
 
 function pseudoHash(str: string): number {
@@ -245,21 +330,19 @@ function StoneMesh3D({
   }, [node.id, index, meshMapRef]);
 
   const geo = node.geometry;
+  const visualScale = getRoundPebbleVisualScale(geo.shape);
   const pebbleGeo = useMemo(
     () =>
       createRiverPebbleGeometry({
-        shape: geo.shape,
-        scale: geo.scale,
+        shape: 'round',
+        scale: visualScale,
         flattenedBase: true,
         seed: 42 + index * 17,
       }),
-    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z, index]
+    [visualScale.x, visualScale.y, visualScale.z, index]
   );
-  const meshScale: [number, number, number] = [
-    PEBBLE_VISUAL_SCALE_FACTOR,
-    0.94,
-    PEBBLE_VISUAL_SCALE_FACTOR,
-  ];
+  // Uses normalized ROUND_PEBBLE_VISUAL_SCALES (PEBBLE_VISUAL_SCALE_FACTOR compatible)
+  const meshScale: [number, number, number] = [1, 1, 1];
 
   return (
     <mesh
@@ -334,21 +417,18 @@ function DroppedStoneMesh3D({
   }, [stone, meshMapRef]);
 
   const geo = buildStoneGeometrySpec(stone.shape);
+  const visualScale = getRoundPebbleVisualScale(stone.shape);
   const pebbleGeo = useMemo(
     () =>
       createRiverPebbleGeometry({
-        shape: geo.shape,
-        scale: geo.scale,
+        shape: 'round',
+        scale: visualScale,
         flattenedBase: true,
         seed: 77,
       }),
-    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+    [visualScale.x, visualScale.y, visualScale.z]
   );
-  const meshScale: [number, number, number] = [
-    PEBBLE_VISUAL_SCALE_FACTOR,
-    0.94,
-    PEBBLE_VISUAL_SCALE_FACTOR,
-  ];
+  const meshScale: [number, number, number] = [1, 1, 1];
 
   const effectivePose = initialPoseOverride ?? stone.pose;
 
@@ -391,21 +471,18 @@ function HoveringStonePreview3D({
 }) {
   const meshRef = React.useRef<THREE.Mesh>(null);
   const geo = buildStoneGeometrySpec(shape);
+  const visualScale = getRoundPebbleVisualScale(shape);
   const pebbleGeo = useMemo(
     () =>
       createRiverPebbleGeometry({
-        shape: geo.shape,
-        scale: geo.scale,
+        shape: 'round',
+        scale: visualScale,
         flattenedBase: true,
         seed: 99,
       }),
-    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+    [visualScale.x, visualScale.y, visualScale.z]
   );
-  const meshScale: [number, number, number] = [
-    PEBBLE_VISUAL_SCALE_FACTOR,
-    0.94,
-    PEBBLE_VISUAL_SCALE_FACTOR,
-  ];
+  const meshScale: [number, number, number] = [1, 1, 1];
 
   const targetY = towerTopY;
   const hoverY = offset.y ?? targetY + 0.42;
@@ -531,6 +608,7 @@ export function ZenAmbientParticles({ count = 24 }: { count?: number }) {
 export function InteractiveDraggableStone3D({
   stone,
   towerTopY,
+  groundedNodes = [],
   isDraggable = true,
   controlsRef,
   onDragStart,
@@ -541,6 +619,7 @@ export function InteractiveDraggableStone3D({
 }: {
   stone: Stone;
   towerTopY: number;
+  groundedNodes?: readonly StoneRenderNode[];
   isDraggable?: boolean;
   controlsRef?: React.MutableRefObject<any>;
   onDragStart?: () => void;
@@ -552,36 +631,43 @@ export function InteractiveDraggableStone3D({
   const { camera } = useThree();
   const meshRef = React.useRef<THREE.Mesh>(null);
   const geo = buildStoneGeometrySpec(stone.shape);
+  const visualScale = getRoundPebbleVisualScale(stone.shape);
   const pebbleGeo = useMemo(
     () =>
       createRiverPebbleGeometry({
-        shape: geo.shape,
-        scale: geo.scale,
+        shape: 'round',
+        scale: visualScale,
         flattenedBase: true,
         seed: 108,
       }),
-    [geo.shape, geo.scale.x, geo.scale.y, geo.scale.z]
+    [visualScale.x, visualScale.y, visualScale.z]
   );
-  const meshScale: [number, number, number] = [
-    PEBBLE_VISUAL_SCALE_FACTOR,
-    0.94,
-    PEBBLE_VISUAL_SCALE_FACTOR,
-  ];
+  const meshScale: [number, number, number] = [1, 1, 1];
 
-  // Camera azimuth angle tracking: ensures unplaced stone is ALWAYS in front of user's camera
+  // Camera azimuth & look-at target tracking (v2.2: stone anchors to camera target & lifts strictly upward)
   const [cameraAzimuth, setCameraAzimuth] = useState(0);
+  const [cameraTargetXZ, setCameraTargetXZ] = useState<readonly [number, number]>([0, 0]);
   const isDraggingRef = useRef(false);
   const dragAzimuthRef = useRef(0);
+  const dragStartPosRef = useRef<readonly [number, number, number]>([0, 0.12, 0]);
 
-  // Compute camera-relative spawn position (1.15m in front of current camera viewpoint)
-  const spawnDist = 1.15;
+  const visualHalfY = visualScale.y * 0.25;
+  const visualRadius = Math.max(visualScale.x * 0.25, visualScale.z * 0.25);
+
+  // spawnDist = 0 so the stone stays at the camera's ground target without forward offset
+  const spawnDist = 0;
   const initialPos = useMemo<readonly [number, number, number]>(() => {
-    return [
-      Number((Math.sin(cameraAzimuth) * spawnDist).toFixed(4)),
-      0.18,
-      Number((Math.cos(cameraAzimuth) * spawnDist).toFixed(4)),
-    ];
-  }, [cameraAzimuth]);
+    const spawnX = Number((cameraTargetXZ[0] + Math.sin(cameraAzimuth) * spawnDist).toFixed(4));
+    const spawnZ = Number((cameraTargetXZ[1] + Math.cos(cameraAzimuth) * spawnDist).toFixed(4));
+    const localSupportY = resolveLocalSupportTopY(
+      spawnX,
+      spawnZ,
+      visualRadius,
+      groundedNodes
+    );
+    const spawnY = Number((localSupportY + visualHalfY).toFixed(4));
+    return [spawnX, spawnY, spawnZ];
+  }, [cameraAzimuth, cameraTargetXZ, visualRadius, visualHalfY, groundedNodes]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [currentPos, setCurrentPos] = useState<readonly [number, number, number]>(initialPos);
@@ -622,21 +708,32 @@ export function InteractiveDraggableStone3D({
     }
   }, [phase, initialPos, stone, controlsRef]);
 
-  // Update camera azimuth angle while idle so stone stays in front of user
+  // Update camera azimuth & panned target while idle
   useFrame(({ clock, camera }) => {
     if (!isDraggingRef.current && phase === 'IDLE') {
       const az = Math.atan2(camera.position.x, camera.position.z);
       if (Math.abs(az - cameraAzimuth) > 0.05) {
         setCameraAzimuth(az);
       }
+      const ctrlTarget = controlsRef?.current?.target;
+      if (ctrlTarget) {
+        const tx = Number(ctrlTarget.x.toFixed(3));
+        const tz = Number(ctrlTarget.z.toFixed(3));
+        if (
+          Math.abs(tx - cameraTargetXZ[0]) > 0.01 ||
+          Math.abs(tz - cameraTargetXZ[1]) > 0.01
+        ) {
+          setCameraTargetXZ([tx, tz]);
+        }
+      }
     }
 
     if (!meshRef.current) return;
     if (!isDraggingRef.current) {
-      const bob = Math.sin(clock.getElapsedTime() * 2.5) * 0.015;
+      const bob = Math.sin(clock.getElapsedTime() * 2.5) * 0.008;
       meshRef.current.position.set(
         initialPos[0],
-        initialPos[1] + bob,
+        initialPos[1] + Math.max(0, bob),
         initialPos[2]
       );
     } else {
@@ -657,10 +754,17 @@ export function InteractiveDraggableStone3D({
 
   const handlePointerDown = (e: any) => {
     if (!isDraggable || isDraggingRef.current) return;
+    // Ignore right-click / middle-click so right-click always pans the camera freely (v2.2 #2)
+    const btn = e.button ?? (e.nativeEvent as any)?.button;
+    if (typeof btn === 'number' && btn !== 0) {
+      return;
+    }
     e.stopPropagation();
 
     isDraggingRef.current = true;
     setIsDragging(true);
+    dragStartPosRef.current = initialPos;
+    currentPosRef.current = initialPos;
 
     const activePointerId = e.pointerId ?? (e.nativeEvent as any)?.pointerId ?? 1;
     activePointerIdRef.current = activePointerId;
@@ -677,7 +781,10 @@ export function InteractiveDraggableStone3D({
     }
 
     // Lock camera azimuth at drag start
-    const startAz = Math.atan2(camera.position.x, camera.position.z);
+    const ctrlTarget = controlsRef?.current?.target;
+    const relCamX = camera.position.x - (ctrlTarget?.x ?? 0);
+    const relCamZ = camera.position.z - (ctrlTarget?.z ?? 0);
+    const startAz = Math.atan2(relCamX, relCamZ);
     dragAzimuthRef.current = startAz;
 
     if (controlsRef?.current) {
@@ -703,30 +810,37 @@ export function InteractiveDraggableStone3D({
         const deltaX = ev.clientX - startPointerRef.current.x;
         const deltaY = ev.clientY - startPointerRef.current.y;
 
-        // Camera-relative drag mathematics:
-        // Moving mouse right moves along camera right vector
-        // Moving mouse up moves upwards and forward towards tower apex
+        // v2.2 #3: Lift stone strictly upward (and lateral left/right), ZERO forward movement!
         const theta = dragAzimuthRef.current;
         const dxWorld = deltaX * 0.003;
-        const dyWorld = -deltaY * 0.0035;
+        const dyWorld = Math.max(0, -deltaY * 0.0035);
 
-        const targetDropY = Math.max(0, towerTopY) + 0.35;
-        const totalVerticalSpan = Math.max(0.2, targetDropY - initialPos[1]);
-        const rawProgress = dyWorld / totalVerticalSpan;
-        const normalizedProgress = Math.max(0, Math.min(1, rawProgress));
-
-        // Lateral displacement along camera right (cos theta, -sin theta)
         const rightX = Math.cos(theta);
         const rightZ = -Math.sin(theta);
 
-        // Forward radial convergence from spawnDist (1.15) to 0.0
-        const radialDist = spawnDist * (1 - normalizedProgress);
+        // No forward radial drift: radialDist is 0
+        const radialDist = 0;
 
-        const x = Number((Math.sin(theta) * radialDist + rightX * dxWorld).toFixed(4));
-        const z = Number((Math.cos(theta) * radialDist + rightZ * dxWorld).toFixed(4));
-        const y = Number((initialPos[1] + dyWorld).toFixed(4));
+        const x = Number(
+          (dragStartPosRef.current[0] + Math.sin(theta) * radialDist + rightX * dxWorld).toFixed(4)
+        );
+        const z = Number(
+          (dragStartPosRef.current[2] + Math.cos(theta) * radialDist + rightZ * dxWorld).toFixed(4)
+        );
+        const localSupportY = resolveLocalSupportTopY(
+          x,
+          z,
+          visualRadius,
+          groundedNodes
+        );
+        const minRestingY = Number((localSupportY + visualHalfY).toFixed(4));
+        const y = Number(Math.max(minRestingY, dragStartPosRef.current[1] + dyWorld).toFixed(4));
 
-        // Evaluate live balance based on lateral deviation from central axis
+        const targetDropY = localSupportY + visualHalfY + 0.18;
+        const totalVerticalSpan = Math.max(0.15, targetDropY - minRestingY);
+        const rawProgress = (y - minRestingY) / totalVerticalSpan;
+        const normalizedProgress = Math.max(0, Math.min(1, rawProgress));
+
         const absLateral = Math.abs(dxWorld);
         const balance: 'stable' | 'caution' | 'critical' =
           absLateral <= BALANCE_THRESHOLD_STABLE
@@ -735,10 +849,7 @@ export function InteractiveDraggableStone3D({
             ? 'caution'
             : 'critical';
 
-        const isOverZone =
-          y >= targetDropY - 0.22 &&
-          absLateral <= DROP_ZONE_MAX_LATERAL_X &&
-          radialDist <= DROP_ZONE_MAX_DEPTH_Z;
+        const isOverZone = y >= minRestingY + 0.05;
 
         const result: DragWorldPositionResult = {
           position: [x, y, z] as const,
@@ -786,14 +897,22 @@ export function InteractiveDraggableStone3D({
 
         const finalPos = currentPosRef.current;
         const stoneHalfY = StonePhysicsBodyFactory.getShapeConfig(stone.shape).halfExtents.y;
-        const shouldDrop = shouldTriggerDrop(finalPos[1], towerTopY);
+        const localSupportY = resolveLocalSupportTopY(
+          finalPos[0],
+          finalPos[2],
+          visualRadius,
+          groundedNodes
+        );
+        const liftedAmount = finalPos[1] - dragStartPosRef.current[1];
+        const shouldDrop =
+          liftedAmount >= 0.05 || shouldTriggerDrop(finalPos[1], localSupportY);
 
         if (shouldDrop) {
-          const dropPose = calculate3DDropPoseFromWorldPosition(
-            finalPos,
-            towerTopY,
-            stoneHalfY
-          );
+          const dropPose = new Pose({
+            x: Number(finalPos[0].toFixed(4)),
+            y: Number(Math.max(finalPos[1], localSupportY + stoneHalfY + 0.22).toFixed(4)),
+            z: Number(finalPos[2].toFixed(4)),
+          });
           onDrop?.(dropPose);
         } else {
           currentPosRef.current = initialPos;
@@ -812,14 +931,21 @@ export function InteractiveDraggableStone3D({
     }
   };
 
+  const currentLocalSupportY = resolveLocalSupportTopY(
+    currentPos[0],
+    currentPos[2],
+    visualRadius,
+    groundedNodes
+  );
+
   return (
     <group>
-      {/* 1. Spawn Pedestal Ring on Floor at initial position */}
+      {/* 1. Spawn Pedestal Ring on Surface at initial position */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[initialPos[0], 0.01, initialPos[2]]}
+        position={[initialPos[0], Math.max(0.01, initialPos[1] - visualHalfY + 0.005), initialPos[2]]}
       >
-        <ringGeometry args={[0.16, 0.26, 32]} />
+        <ringGeometry args={[0.14, 0.22, 32]} />
         <meshBasicMaterial
           color="#3182F6"
           transparent
@@ -830,9 +956,9 @@ export function InteractiveDraggableStone3D({
 
       {/* 2. Cairn Apex Sweet Spot Marker (Stationary Target Center on Top of Tower) */}
       {isDragging && (
-        <group position={[0, Math.max(0.012, towerTopY + 0.012), 0]}>
+        <group position={[initialPos[0], Math.max(0.012, currentLocalSupportY + 0.012), initialPos[2]]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.16, 0.22, 32]} />
+            <ringGeometry args={[0.14, 0.20, 32]} />
             <meshBasicMaterial color="#3182F6" transparent opacity={0.35} side={THREE.DoubleSide} />
           </mesh>
           <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -845,32 +971,29 @@ export function InteractiveDraggableStone3D({
       {/* 3. Real-Time Dynamic Drop Prediction Marker (Projected Landing Footprint) */}
       {(() => {
         if (!isDragging) return null;
-        const isOverTowerSupport =
-          Math.abs(currentPos[0]) <= 0.35 && Math.abs(currentPos[2]) <= 0.30;
-        const projectedLandingY = isOverTowerSupport
-          ? Math.max(0.015, towerTopY + 0.015)
-          : 0.015;
+        const isOverTowerSupport = currentLocalSupportY > 0.01;
+        const projectedLandingY = Math.max(0.015, currentLocalSupportY + 0.015);
         const beamHeight = Math.max(0.02, currentPos[1] - projectedLandingY);
         const beamCenterY = projectedLandingY + beamHeight * 0.5;
 
         const landingAuraColor = !isOverTowerSupport
           ? '#5C7CFA' // Peaceful soft blue for ground
-          : '#3182F6'; // Toss Blue for tower
+          : '#3182F6'; // Toss Blue for stone support
 
         return (
           <group>
             {/* Projected Landing Reticle Ring & Contact Shadow */}
             <group position={[currentPos[0], projectedLandingY, currentPos[2]]}>
               <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.22, 32]} />
+                <circleGeometry args={[0.20, 32]} />
                 <meshBasicMaterial color="#000000" transparent opacity={0.38} side={THREE.DoubleSide} />
               </mesh>
               <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
-                <ringGeometry args={[0.13, 0.20, 32]} />
+                <ringGeometry args={[0.12, 0.18, 32]} />
                 <meshBasicMaterial color={landingAuraColor} transparent opacity={0.88} side={THREE.DoubleSide} />
               </mesh>
               <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
-                <circleGeometry args={[0.04, 16]} />
+                <circleGeometry args={[0.035, 16]} />
                 <meshBasicMaterial color={landingAuraColor} transparent opacity={0.92} side={THREE.DoubleSide} />
               </mesh>
             </group>
@@ -1143,7 +1266,7 @@ export function StoneTowerCanvas({
   cameraPreset,
   onCameraPresetChange,
   towerTopY,
-  enablePan = false,
+  enablePan = true,
   enableZoom = true,
   selectedStoneId,
   focusedStoneId,
@@ -1160,7 +1283,40 @@ export function StoneTowerCanvas({
   onRecenter,
 }: StoneTowerCanvasProps) {
   const normalizedStones = useMemo(() => normalizeTowerStoneItems(stones), [stones]);
-  const nodes = buildTowerSceneGraph(normalizedStones);
+  const rawNodes = useMemo(() => buildTowerSceneGraph(normalizedStones), [normalizedStones]);
+  const nodes = useMemo(() => resolveGrounded3DNodes(rawNodes), [rawNodes]);
+  const groundedDroppedStone = useMemo(() => {
+    if (!droppedStone) return null;
+    const hasActiveTrajectory = Boolean(
+      trajectory &&
+        trajectory.length > 0 &&
+        phase !== 'IDLE' &&
+        phase !== 'FALLEN_CHOICE' &&
+        phase !== 'SETTLED'
+    );
+    if (hasActiveTrajectory) {
+      return droppedStone;
+    }
+    const vScale = getRoundPebbleVisualScale(droppedStone.shape);
+    const radius = Math.max(vScale.x * 0.25, vScale.z * 0.25);
+    const supportTopY = resolveLocalSupportTopY(
+      droppedStone.pose.position.x,
+      droppedStone.pose.position.z,
+      radius,
+      nodes
+    );
+    const groundedY = Number((supportTopY + vScale.y * 0.25).toFixed(4));
+    return droppedStone.withPose(
+      new Pose(
+        {
+          x: droppedStone.pose.position.x,
+          y: groundedY,
+          z: droppedStone.pose.position.z,
+        },
+        droppedStone.pose.rotation
+      )
+    );
+  }, [droppedStone, trajectory, phase, nodes]);
   const [towerStyle, setTowerStyle] = useState<TowerArchStyle>(defaultStyle);
   const [selectedNode, setSelectedNode] = useState<StoneRenderNode | null>(null);
   const [randomSeed, setRandomSeed] = useState(42);
@@ -1272,9 +1428,9 @@ export function StoneTowerCanvas({
       phase === 'FALLEN_CHOICE' ||
       (!hasTrajectory && phase !== 'COLLAPSING')
     ) {
-      resetTowerMeshTransforms(meshMapRef.current, nodes, droppedStone);
+      resetTowerMeshTransforms(meshMapRef.current, nodes, groundedDroppedStone);
     }
-  }, [phase, trajectory, nodes, droppedStone]);
+  }, [phase, trajectory, nodes, groundedDroppedStone]);
 
   return (
     <View
@@ -1362,7 +1518,10 @@ export function StoneTowerCanvas({
       )}
 
       {use3D ? (
-        <View style={[styles.threeCanvasWrapper, { touchAction: 'none', userSelect: 'none' } as any]}>
+        <View
+          style={[styles.threeCanvasWrapper, { touchAction: 'none', userSelect: 'none' } as any]}
+          {...({ onContextMenu: (e: any) => e?.preventDefault?.() } as any)}
+        >
           <Canvas
             shadows
             camera={{ position: [0, 1.8, 3.8], fov: 45 }}
@@ -1448,9 +1607,14 @@ export function StoneTowerCanvas({
                 maxDistance={CAMERA_MAX_DISTANCE}
                 maxPolarAngle={Math.PI * 0.49}
                 minPolarAngle={0.05}
-                enablePan={enablePan ?? false}
+                enablePan={enablePan ?? true}
                 screenSpacePanning={true}
                 enableZoom={enableZoom ?? true}
+                mouseButtons={{
+                  LEFT: THREE.MOUSE.ROTATE,
+                  MIDDLE: THREE.MOUSE.DOLLY,
+                  RIGHT: THREE.MOUSE.PAN,
+                }}
                 touches={{
                   ONE: THREE.TOUCH.ROTATE,
                   TWO: THREE.TOUCH.DOLLY_PAN,
@@ -1491,6 +1655,7 @@ export function StoneTowerCanvas({
               <InteractiveDraggableStone3D
                 stone={activeStoneInstance}
                 towerTopY={towerTopY ?? 0.8}
+                groundedNodes={nodes}
                 isDraggable={isDraggable}
                 controlsRef={orbitControlsRef}
                 onDragStart={onStoneDragStart}
@@ -1510,14 +1675,14 @@ export function StoneTowerCanvas({
               />
             )}
 
-            {droppedStone && (
+            {groundedDroppedStone && (
               <DroppedStoneMesh3D
-                stone={droppedStone}
+                stone={groundedDroppedStone}
                 meshMapRef={meshMapRef}
                 initialPoseOverride={
-                  (droppedStone.pose.position.x === 0 &&
-                    droppedStone.pose.position.y === 0 &&
-                    droppedStone.pose.position.z === 0 &&
+                  (groundedDroppedStone.pose.position.x === 0 &&
+                    groundedDroppedStone.pose.position.y === 0 &&
+                    groundedDroppedStone.pose.position.z === 0 &&
                     trajectory?.[0]?.poses.get('dropped-stone')) ||
                   undefined
                 }

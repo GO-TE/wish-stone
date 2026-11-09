@@ -23,11 +23,11 @@ const STONE_SHAPES: readonly {
   label: string;
   desc: string;
 }[] = [
-  { shape: 'round', label: '둥근 몽돌', desc: '모나지 않고 매끄러운 조약돌' },
-  { shape: 'flat', label: '납작한 강돌', desc: '돌탑의 든든한 받침 조약돌' },
-  { shape: 'pebble', label: '작은 자갈돌', desc: '가볍고 아담한 여울 조약돌' },
-  { shape: 'tall', label: '세워진 조약돌', desc: '차분하게 빚어진 기원의 몽돌' },
-  { shape: 'boulder', label: '묵직한 몽돌', desc: '무게감 있는 둥근 강변 조약돌' },
+  { shape: 'round', label: '둥근 자갈돌', desc: '모나지 않고 동그란 강변 자갈돌' },
+  { shape: 'flat', label: '납작한 자갈돌', desc: '돌탑의 든든한 받침이 되는 동그란 자갈' },
+  { shape: 'pebble', label: '작은 자갈돌', desc: '가볍고 아담한 여울 자갈돌' },
+  { shape: 'tall', label: '통통한 자갈돌', desc: '동글동글하게 빚어진 기원의 자갈돌' },
+  { shape: 'boulder', label: '단단한 몽돌', desc: '무게감 있는 둥근 강변 자갈돌' },
 ];
 
 const STONE_COLORS: readonly { color: string; name: string }[] =
@@ -50,44 +50,44 @@ interface StoneVisualProfile {
  */
 const SHAPE_PROFILES: Record<StoneShape, StoneVisualProfile> = {
   flat: {
-    width: 106,
+    width: 84,
     height: 36,
-    borderTopLeftRadius: 32,
+    borderTopLeftRadius: 30,
     borderTopRightRadius: 28,
-    borderBottomRightRadius: 16,
+    borderBottomRightRadius: 18,
     borderBottomLeftRadius: 18,
   },
   round: {
-    width: 92,
-    height: 44,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 32,
+    width: 78,
+    height: 40,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 30,
     borderBottomRightRadius: 20,
-    borderBottomLeftRadius: 22,
-  },
-  tall: {
-    width: 70,
-    height: 54,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 32,
-    borderBottomRightRadius: 18,
     borderBottomLeftRadius: 20,
   },
+  tall: {
+    width: 74,
+    height: 38,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottomRightRadius: 18,
+    borderBottomLeftRadius: 18,
+  },
   pebble: {
-    width: 68,
+    width: 66,
     height: 34,
     borderTopLeftRadius: 26,
-    borderTopRightRadius: 28,
+    borderTopRightRadius: 26,
     borderBottomRightRadius: 16,
     borderBottomLeftRadius: 16,
   },
   boulder: {
-    width: 112,
-    height: 48,
-    borderTopLeftRadius: 38,
-    borderTopRightRadius: 34,
+    width: 88,
+    height: 42,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 32,
     borderBottomRightRadius: 20,
-    borderBottomLeftRadius: 22,
+    borderBottomLeftRadius: 20,
   },
 };
 

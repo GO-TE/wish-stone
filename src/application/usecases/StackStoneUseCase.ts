@@ -112,9 +112,25 @@ export class StackStoneUseCase {
     }
 
     const autoPlaced = !dropResult.settled;
+    let fallbackAutoPose = Pose.onTopOf(tower.topY());
+    if (autoPlaced && tower.stones.length > 0) {
+      let bestStone = tower.stones[0].stone;
+      let bestY = -Infinity;
+      for (const item of tower.stones) {
+        if (item.stone.pose.position.y > bestY) {
+          bestY = item.stone.pose.position.y;
+          bestStone = item.stone;
+        }
+      }
+      fallbackAutoPose = new Pose({
+        x: bestStone.pose.position.x,
+        y: Number((bestStone.pose.position.y + 0.25).toFixed(4)),
+        z: bestStone.pose.position.z,
+      });
+    }
     const finalPose = dropResult.settled
       ? dropResult.pose
-      : Pose.onTopOf(tower.topY());
+      : fallbackAutoPose;
 
     const stoneWithPose = draft.stone.withPose(finalPose);
     const id = await this.wishes.create({

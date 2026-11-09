@@ -117,13 +117,33 @@ export default function PlaceStone3DScreen() {
   }, [controller]);
 
   const getAutoPlacementDropPose = (lateralOffset = 0): Pose => {
-    const topSurfaceY = activeTower.topSurfaceY ? activeTower.topSurfaceY() : activeTower.topY();
     const dropConfig = StonePhysicsBodyFactory.getShapeConfig(state.selectedStone.shape);
-    return calculate3DDropPoseFromWorldPosition(
-      [lateralOffset, topSurfaceY + dropConfig.halfExtents.y + 0.35, 0],
-      topSurfaceY,
-      dropConfig.halfExtents.y
-    );
+    let targetX = lateralOffset;
+    let targetZ = 0;
+    let supportSurfaceY = 0;
+
+    if (activeTower.stones.length > 0) {
+      let highestStone = activeTower.stones[0].stone;
+      let highestTopY = -Infinity;
+      for (const item of activeTower.stones) {
+        const s = item.stone;
+        const hY = StonePhysicsBodyFactory.getShapeConfig(s.shape).halfExtents.y;
+        const topY = s.pose.position.y + hY;
+        if (topY > highestTopY) {
+          highestTopY = topY;
+          highestStone = s;
+        }
+      }
+      targetX = Number((highestStone.pose.position.x + lateralOffset).toFixed(4));
+      targetZ = Number(highestStone.pose.position.z.toFixed(4));
+      supportSurfaceY = Math.max(0, highestTopY);
+    }
+
+    return new Pose({
+      x: targetX,
+      y: Number((supportSurfaceY + dropConfig.halfExtents.y + 0.25).toFixed(4)),
+      z: targetZ,
+    });
   };
 
   /**
