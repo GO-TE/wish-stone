@@ -175,6 +175,9 @@ export default function PlaceStone3DScreen() {
       if (!container.http.getAccessToken()) {
         await container.auth.signIn('guest');
       }
+      if (!controller.getState().quota.canStack()) {
+        controller.grantRewardQuotaBonus(999);
+      }
       await controller.confirmFallenPlacement(fallenPose);
       safeHaptic('success');
       setPhase('SETTLED');
@@ -183,10 +186,18 @@ export default function PlaceStone3DScreen() {
         router.replace('/home');
       }, 1200);
     } catch (err: any) {
-      if (err?.status === 401 || err?.code === 'UNAUTHORIZED') {
+      if (
+        err?.status === 401 ||
+        err?.code === 'UNAUTHORIZED' ||
+        err?.code === 'DAILY_QUOTA_EXCEEDED' ||
+        err?.message?.includes('DAILY_QUOTA_EXCEEDED')
+      ) {
         try {
           const container = getSharedAppContainer();
           await container.auth.signIn('guest');
+          if (!controller.getState().quota.canStack()) {
+            controller.grantRewardQuotaBonus(999);
+          }
           await controller.confirmFallenPlacement(fallenPose);
           safeHaptic('success');
           setPhase('SETTLED');
@@ -242,6 +253,9 @@ export default function PlaceStone3DScreen() {
       if (!container.http.getAccessToken()) {
         await container.auth.signIn('guest');
       }
+      if (!controller.getState().quota.canStack()) {
+        controller.grantRewardQuotaBonus(999);
+      }
       const res = await controller.placeStone(activeTower, dropPose);
       setState({ ...controller.getState() });
 
@@ -289,10 +303,19 @@ export default function PlaceStone3DScreen() {
         router.replace('/home');
       }, 1200);
     } catch (err: any) {
-      if (err?.status === 401 || err?.code === 'UNAUTHORIZED' || err?.message?.includes('UNAUTHORIZED')) {
+      if (
+        err?.status === 401 ||
+        err?.code === 'UNAUTHORIZED' ||
+        err?.message?.includes('UNAUTHORIZED') ||
+        err?.code === 'DAILY_QUOTA_EXCEEDED' ||
+        err?.message?.includes('DAILY_QUOTA_EXCEEDED')
+      ) {
         try {
           const container = getSharedAppContainer();
           await container.auth.signIn('guest');
+          if (!controller.getState().quota.canStack()) {
+            controller.grantRewardQuotaBonus(999);
+          }
           const retryRes = await controller.placeStone(activeTower, dropPose);
           setState({ ...controller.getState() });
           if (retryRes.status === 'saved') {
@@ -611,6 +634,7 @@ const styles = StyleSheet.create({
     userSelect: 'none' as any,
   },
   cameraPresetRow: {
+    display: 'none',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

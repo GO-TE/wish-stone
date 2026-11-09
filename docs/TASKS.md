@@ -71,3 +71,10 @@
 - [x] **T13.2**: `<OrbitControls>` 마우스 우클릭 자유 카메라 패닝(`RIGHT: THREE.MOUSE.PAN`) 및 컨텍스트 메뉴 방지 적용
 - [x] **T13.3**: 돌 드래그 시 전방(Z) 수렴 제거 및 순수 수직 리프트(`radialDist = 0`) 적용
 - [x] **T13.4**: 길쭉한 세로형 돌(`tall`) 제거 및 전 돌 모양의 동그란 자갈돌(`ROUND_PEBBLE_VISUAL_SCALES`) 단일화
+
+
+## M14: v2.3 3D 폐기 및 감성 2D 자갈돌 돌탑 전면 전환 + 쿼터 제한 해제 (완료)
+- [x] **T14.1**: `StoneTowerCanvas` 기본 렌더링 모드를 `'2d'`로 전환하여 Three.js 3D 뷰포트 비활성화
+- [x] **T14.2**: 2D 자갈돌 직접 드래그 앤 드롭(`handle2DPointerDown`), 실시간 수직 정렬 레이저 가이드 및 안착 타겟 구현
+- [x] **T14.3**: 2D 정원 바닥 착지(`FALLEN_CHOICE`) 및 꼭대기 안착(`SETTLED`) 시각 피드백 구현
+- [x] **T14.4**: 일일 소원 쿼터 999개 확대 및 백엔드 `DAILY_QUOTA_EXCEEDED` 발생 시 자동 게스트 세션 갱신 적용

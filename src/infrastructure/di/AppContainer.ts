@@ -119,7 +119,9 @@ let sharedContainer: AppContainer | null = null;
  */
 export function getSharedAppContainer(): AppContainer {
   if (!sharedContainer) {
-    sharedContainer = createAppContainer();
+    sharedContainer = createAppContainer({
+      initialQuotaProps: { baseQuota: 999, bonusQuota: 0, usedCount: 0 },
+    });
   }
   return sharedContainer;
 }

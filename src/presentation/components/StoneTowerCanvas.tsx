@@ -1261,7 +1261,7 @@ export function StoneTowerCanvas({
   droppedStone,
   onPlaybackComplete,
   onCollapseAnimationComplete,
-  renderMode = 'auto',
+  renderMode = '2d',
   enableOrbitControls = false,
   cameraPreset,
   onCameraPresetChange,
@@ -1375,7 +1375,7 @@ export function StoneTowerCanvas({
 
   const webGLSupported = useMemo(() => isWebGLAvailable(), []);
   const use3D =
-    renderMode === '3d' || (renderMode !== '2d' && webGLSupported && Platform.OS === 'web');
+    renderMode === '3d' && webGLSupported && Platform.OS === 'web';
 
   const tiers = organizeTowerTiers(nodes, towerStyle);
 
@@ -1386,6 +1386,104 @@ export function StoneTowerCanvas({
 
   const handleReroll = () => {
     setRandomSeed((prev) => (prev * 1664525 + 1013904223) % 100000);
+  };
+
+  // v2.3: 2D Interactive Pebble Drag-and-Drop State
+  const [isDragging2D, setIsDragging2D] = useState(false);
+  const [drag2DOffset, setDrag2DOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [drag2DBalance, setDrag2DBalance] = useState<'stable' | 'caution' | 'critical'>('stable');
+  const isDragging2DRef = useRef(false);
+  const drag2DStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const drag2DOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (phase === 'IDLE') {
+      isDragging2DRef.current = false;
+      setIsDragging2D(false);
+      drag2DOffsetRef.current = { x: 0, y: 0 };
+      setDrag2DOffset({ x: 0, y: 0 });
+      setDrag2DBalance('stable');
+    }
+  }, [phase, activeStoneInstance]);
+
+  const handle2DPointerDown = (e: any) => {
+    if (!isDraggable || isDragging2DRef.current) return;
+    const btn = e?.button ?? e?.nativeEvent?.button;
+    if (typeof btn === 'number' && btn !== 0) return;
+
+    const clientX = e?.clientX ?? e?.nativeEvent?.clientX ?? e?.nativeEvent?.pageX ?? 0;
+    const clientY = e?.clientY ?? e?.nativeEvent?.clientY ?? e?.nativeEvent?.pageY ?? 0;
+
+    isDragging2DRef.current = true;
+    setIsDragging2D(true);
+    drag2DStartRef.current = { x: clientX - drag2DOffsetRef.current.x, y: clientY - drag2DOffsetRef.current.y };
+
+    onStoneDragStart?.();
+
+    if (typeof window !== 'undefined') {
+      const handleMove = (ev: PointerEvent | MouseEvent) => {
+        if (!isDragging2DRef.current) return;
+        const rawDx = ev.clientX - drag2DStartRef.current.x;
+        const rawDy = ev.clientY - drag2DStartRef.current.y;
+        const dx = Math.max(-120, Math.min(120, rawDx));
+        const dy = Math.max(-60, Math.min(80, rawDy));
+
+        drag2DOffsetRef.current = { x: dx, y: dy };
+        setDrag2DOffset({ x: dx, y: dy });
+
+        const absDx = Math.abs(dx);
+        const balance: 'stable' | 'caution' | 'critical' =
+          absDx <= 28 ? 'stable' : absDx <= 62 ? 'caution' : 'critical';
+        setDrag2DBalance(balance);
+
+        const lateralWorldX = Number((dx * 0.0032).toFixed(4));
+        const topYVal = towerTopY ?? 0.5;
+        onStoneDragMove?.({
+          position: [lateralWorldX, Number((topYVal + 0.35).toFixed(4)), 0],
+          normalizedProgress: 1,
+          isOverDropZone: absDx <= 62,
+          balanceRating: balance,
+        });
+      };
+
+      const handleUp = () => {
+        if (!isDragging2DRef.current) return;
+        isDragging2DRef.current = false;
+        setIsDragging2D(false);
+
+        window.removeEventListener('pointermove', handleMove as any);
+        window.removeEventListener('pointerup', handleUp as any);
+        window.removeEventListener('pointercancel', handleUp as any);
+
+        const finalDx = drag2DOffsetRef.current.x;
+        const lateralWorldX = Number((finalDx * 0.0032).toFixed(4));
+        const stoneShape = activeStoneInstance?.shape ?? 'round';
+        const stoneHalfY = StonePhysicsBodyFactory.getShapeConfig(stoneShape).halfExtents.y;
+
+        let baseCenterX = 0;
+        let baseCenterZ = 0;
+        let supportSurfaceY = Math.max(0, towerTopY ?? 0);
+        if (nodes.length > 0) {
+          const topNode = nodes[nodes.length - 1];
+          baseCenterX = topNode.position.x;
+          baseCenterZ = topNode.position.z;
+        }
+
+        const dropPose = new Pose({
+          x: Number((baseCenterX + lateralWorldX).toFixed(4)),
+          y: Number((supportSurfaceY + stoneHalfY + 0.25).toFixed(4)),
+          z: Number(baseCenterZ.toFixed(4)),
+        });
+
+        drag2DOffsetRef.current = { x: 0, y: 0 };
+        setDrag2DOffset({ x: 0, y: 0 });
+        onStoneDrop?.(dropPose);
+      };
+
+      window.addEventListener('pointermove', handleMove as any);
+      window.addEventListener('pointerup', handleUp as any);
+      window.addEventListener('pointercancel', handleUp as any);
+    }
   };
 
   // Trajectory playback fallback for 2D mode & headless test environments
@@ -1718,7 +1816,7 @@ export function StoneTowerCanvas({
             </View>
           )}
         </View>
-      ) : nodes.length === 0 ? (
+      ) : nodes.length === 0 && !activeStoneInstance && !droppedStone ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyPebbleVisual}>
             <View style={styles.emptyStoneShape} />
@@ -1731,10 +1829,120 @@ export function StoneTowerCanvas({
         </View>
       ) : (
         <View style={styles.towerStage}>
-          {/* 상단 꼭대기 은은한 소원 파티클 */}
-          <View style={styles.topSparkleContainer}>
-            <Text style={styles.topSparkle}>✨</Text>
-          </View>
+          {/* 2D Interactive Draggable Stone Zone (올리기 전 & 드래그 중) */}
+          {activeStoneInstance && !droppedStone && (phase === 'IDLE' || phase === 'PLACING' || !phase) ? (() => {
+            const activeProfile =
+              SHAPE_BASE_PROFILES[activeStoneInstance.shape] ?? SHAPE_BASE_PROFILES.round;
+            const activeW = Math.round(activeProfile.baseWidth * 0.92);
+            const activeH = Math.round(activeProfile.baseHeight * 0.92);
+            const guideColor =
+              drag2DBalance === 'stable'
+                ? '#3182F6'
+                : drag2DBalance === 'caution'
+                ? '#FFB300'
+                : '#FF6B6B';
+            const guideLabel = isDragging2D
+              ? drag2DBalance === 'stable'
+                ? '✨ 균형이 잘 맞았습니다 · 손을 놓아 올려보세요'
+                : drag2DBalance === 'caution'
+                ? '⚖️ 중심이 살짝 비껴나 아슬아슬해요'
+                : '🍃 중심에서 벗어나 바닥에 내려앉을 수 있어요'
+              : '✋ 돌을 좌우로 끌어 균형을 맞춘 뒤 손을 놓아보세요';
+
+            return (
+              <View style={styles.drag2DStageArea}>
+                <Text style={[styles.drag2DHintText, { color: isDragging2D ? guideColor : '#94A3B8' }]}>
+                  {guideLabel}
+                </Text>
+
+                <View
+                  onPointerDown={handle2DPointerDown as any}
+                  style={[
+                    styles.draggable2DPebbleWrapper,
+                    {
+                      transform: [
+                        { translateX: drag2DOffset.x },
+                        { translateY: drag2DOffset.y },
+                        { scale: isDragging2D ? 1.06 : 1 },
+                      ],
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.stonePebble,
+                      {
+                        width: activeW,
+                        height: activeH,
+                        borderTopLeftRadius: activeProfile.rTL,
+                        borderTopRightRadius: activeProfile.rTR,
+                        borderBottomRightRadius: activeProfile.rBR,
+                        borderBottomLeftRadius: activeProfile.rBL,
+                        backgroundColor: activeStoneInstance.color || '#64748B',
+                        borderColor: guideColor,
+                        borderWidth: isDragging2D ? 2.5 : 1.5,
+                      },
+                    ]}
+                  >
+                    <View style={styles.stoneSurfaceHighlight} />
+                  </View>
+                </View>
+
+                <View
+                  style={[
+                    styles.drag2DGuideBeam,
+                    {
+                      backgroundColor: guideColor,
+                      opacity: isDragging2D ? 0.75 : 0.35,
+                      transform: [{ translateX: drag2DOffset.x }],
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.drag2DTargetOval,
+                    {
+                      borderColor: guideColor,
+                      backgroundColor: isDragging2D ? 'rgba(49, 130, 246, 0.18)' : 'rgba(49, 130, 246, 0.08)',
+                      transform: [{ translateX: drag2DOffset.x }],
+                    },
+                  ]}
+                />
+              </View>
+            );
+          })() : (
+            <View style={styles.topSparkleContainer}>
+              <Text style={styles.topSparkle}>✨</Text>
+            </View>
+          )}
+
+          {/* 안착 성공(SETTLED / BALANCING) 시 꼭대기에 얹힌 새 소원 돌 2D 표시 */}
+          {droppedStone && (phase === 'SETTLED' || phase === 'BALANCING') && (() => {
+            const dProfile = SHAPE_BASE_PROFILES[droppedStone.shape] ?? SHAPE_BASE_PROFILES.round;
+            const dW = Math.round(dProfile.baseWidth * 0.9);
+            const dH = Math.round(dProfile.baseHeight * 0.9);
+            return (
+              <View style={[styles.stoneWrapper, { marginBottom: -3, zIndex: 99 }]}>
+                <View
+                  style={[
+                    styles.stonePebble,
+                    styles.stoneSelectedHighlight,
+                    {
+                      width: dW,
+                      height: dH,
+                      borderTopLeftRadius: dProfile.rTL,
+                      borderTopRightRadius: dProfile.rTR,
+                      borderBottomRightRadius: dProfile.rBR,
+                      borderBottomLeftRadius: dProfile.rBL,
+                      backgroundColor: droppedStone.color,
+                    },
+                  ]}
+                >
+                  <View style={styles.stoneSurfaceHighlight} />
+                </View>
+              </View>
+            );
+          })()}
 
           {/* 돌탑 적층 뷰포트 (바닥단부터 위로 column-reverse) */}
           <View style={styles.stackedTiersColumn}>
@@ -1902,6 +2110,36 @@ export function StoneTowerCanvas({
             })}
           </View>
 
+          {/* 정원 바닥에 내려앉은 돌 (COLLAPSING / FALLEN_CHOICE 상태) */}
+          {droppedStone && (phase === 'COLLAPSING' || phase === 'FALLEN_CHOICE') && (() => {
+            const fProfile = SHAPE_BASE_PROFILES[droppedStone.shape] ?? SHAPE_BASE_PROFILES.round;
+            const fW = Math.round(fProfile.baseWidth * 0.85);
+            const fH = Math.round(fProfile.baseHeight * 0.85);
+            return (
+              <View style={styles.fallen2DStoneContainer}>
+                <View
+                  style={[
+                    styles.stonePebble,
+                    {
+                      width: fW,
+                      height: fH,
+                      borderTopLeftRadius: fProfile.rTL,
+                      borderTopRightRadius: fProfile.rTR,
+                      borderBottomRightRadius: fProfile.rBR,
+                      borderBottomLeftRadius: fProfile.rBL,
+                      backgroundColor: droppedStone.color,
+                      borderColor: '#34C759',
+                      borderWidth: 2,
+                    },
+                  ]}
+                >
+                  <View style={styles.stoneSurfaceHighlight} />
+                </View>
+                <Text style={styles.fallen2DCaption}>🍃 정원 바닥에 내려앉은 소원 돌</Text>
+              </View>
+            );
+          })()}
+
           {/* 바닥 지면 및 기초 디딤돌 그림자 */}
           <View style={styles.groundBase}>
             <View
@@ -2013,6 +2251,49 @@ const styles = StyleSheet.create({
   },
   topSparkleContainer: {
     marginBottom: 2,
+  },
+  drag2DStageArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    width: '100%',
+    zIndex: 80,
+  },
+  drag2DHintText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  draggable2DPebbleWrapper: {
+    cursor: 'grab' as any,
+    padding: 6,
+    zIndex: 90,
+  },
+  drag2DGuideBeam: {
+    width: 2,
+    height: 28,
+    borderRadius: 1,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  drag2DTargetOval: {
+    width: 68,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1.5,
+  },
+  fallen2DStoneContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginLeft: 90,
+  },
+  fallen2DCaption: {
+    color: '#34C759',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
   },
   topSparkle: {
     fontSize: 14,
