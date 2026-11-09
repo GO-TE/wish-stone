@@ -39,8 +39,7 @@ function safeHaptic(type: 'grab' | 'warning' | 'success') {
 
 /**
  * SCR-07 쌓기 (일반 3D & 실감 드래그 인터랙션) 화면 (`/stack/place`)
- * Toss-Style Minimal Aesthetic Revamp
- * 근거: 화면 설계서.md 5장, DB-010, D-019, D-022
+ * v2.1: 실패 액션/경고 문구 제거 및 평온한 재시도 플로우(`FALLEN_CHOICE` / `다시 올려보기`) 보존
  */
 export default function PlaceStone3DScreen() {
   const router = useRouter();
@@ -65,7 +64,6 @@ export default function PlaceStone3DScreen() {
   );
   const [isNearTarget, setIsNearTarget] = useState(false);
   const [isOffCenter, setIsOffCenter] = useState(false);
-  const [hoverOffset, setHoverOffset] = useState<{ x: number; z: number }>({ x: 0, z: 0 });
 
   const collapseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -129,8 +127,8 @@ export default function PlaceStone3DScreen() {
   };
 
   /**
-   * 돌이 미끄러져 굴러떨어졌을 때의 처리:
-   * 자동으로 리셋하지 않고, 떨어진 자리 그대로 안착시키거나 다시 올려볼 수 있는 선택 상태(FALLEN_CHOICE)로 진입 (D-022)
+   * 돌이 정원 바닥으로 내려앉았을 때의 처리:
+   * 내려앉은 자리 그대로 안착시키거나 다시 올려볼 수 있는 선택 상태(FALLEN_CHOICE)로 진입 (D-022)
    */
   const handleCollapseComplete = (finalPoseOverride?: Pose) => {
     if (collapseTimerRef.current) {
@@ -142,11 +140,11 @@ export default function PlaceStone3DScreen() {
     setFallenPose(poseToUse);
     setRenderedDroppedStone(state.selectedStone.withPose(poseToUse));
     setPhase('FALLEN_CHOICE');
-    setStatusMessage('🍃 돌이 아래로 굴러떨어졌습니다. 이것도 하나의 탑이 될 수 있어요.');
+    setStatusMessage('🍃 돌이 정원 바닥에 내려앉았습니다. 다시 올려보거나 이 자리에 둘 수 있어요.');
   };
 
   /**
-   * 떨어진 그 자리에 그대로 소원 돌을 확정 안착하기
+   * 내려앉은 그 자리에 그대로 소원 돌을 확정 안착하기
    */
   const handleConfirmFallen = async () => {
     if (!fallenPose || isConfirmingFallen) return;
@@ -160,7 +158,7 @@ export default function PlaceStone3DScreen() {
       await controller.confirmFallenPlacement(fallenPose);
       safeHaptic('success');
       setPhase('SETTLED');
-      setStatusMessage('✨ 떨어진 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
+      setStatusMessage('✨ 내려앉은 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
       setTimeout(() => {
         router.replace('/home');
       }, 1200);
@@ -172,7 +170,7 @@ export default function PlaceStone3DScreen() {
           await controller.confirmFallenPlacement(fallenPose);
           safeHaptic('success');
           setPhase('SETTLED');
-          setStatusMessage('✨ 떨어진 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
+          setStatusMessage('✨ 내려앉은 자리 그대로 소원이 돌탑의 일부로 깃들었습니다.');
           setTimeout(() => {
             router.replace('/home');
           }, 1200);
@@ -185,7 +183,7 @@ export default function PlaceStone3DScreen() {
   };
 
   /**
-   * 사용자가 원하여 다시 탑 위로 올려보기를 선택했을 때
+   * 사용자가 다시 탑 위로 올려보기를 선택했을 때 (재시도 플로우 유지)
    */
   const handleRetryPlacement = () => {
     if (collapseTimerRef.current) {
@@ -213,7 +211,7 @@ export default function PlaceStone3DScreen() {
     }
 
     setPhase('BALANCING');
-    setStatusMessage('돌이 안착하는 중입니다... 균형을 측정하고 있어요 ⚖️');
+    setStatusMessage('돌이 사뿐히 내려앉는 중입니다... ⚖️');
 
     // Mount dropped stone immediately with initial drop pose (avoids origin jump)
     const initialDroppedStone = state.selectedStone.withPose(dropPose);
@@ -233,8 +231,8 @@ export default function PlaceStone3DScreen() {
 
       if (res.status === 'retry') {
         setPhase('COLLAPSING');
-        safeHaptic('warning');
-        setStatusMessage(`🍃 중심을 잃고 굴러떨어지는 중... (${res.attempt}/3회)`);
+        safeHaptic('grab');
+        setStatusMessage('🍃 돌이 정원 위로 사뿐히 내려앉는 중입니다...');
 
         // Record the final resting pose where it landed on the ground
         const finalPose =
@@ -322,7 +320,6 @@ export default function PlaceStone3DScreen() {
         <Text
           style={[
             styles.status,
-            phase === 'COLLAPSING' && styles.statusDanger,
             phase === 'FALLEN_CHOICE' && styles.statusPeaceful,
             phase === 'SETTLED' && styles.statusSuccess,
           ]}
@@ -331,17 +328,11 @@ export default function PlaceStone3DScreen() {
         </Text>
       </View>
 
-      {/* Dynamic Status / Alert Banner */}
+      {/* Peaceful Choice Banner when stone settled on garden floor */}
       {phase === 'FALLEN_CHOICE' ? (
         <View style={styles.peacefulBox}>
           <Text style={styles.peacefulAlert}>
-            🍃 돌이 굴러떨어져 바닥에 안착했습니다. 이것도 하나의 탑이 될 수 있어요.
-          </Text>
-        </View>
-      ) : phase === 'COLLAPSING' || state.towerCollapsed ? (
-        <View style={styles.collapsedBox}>
-          <Text style={styles.collapsedAlert}>
-            ⚠️ 균형을 잃고 돌탑이 무너졌습니다 (동적 물리 붕괴 연출 중)
+            🍃 돌이 정원 바닥에 내려앉았습니다. 이것도 하나의 탑이 될 수 있어요.
           </Text>
         </View>
       ) : null}
@@ -466,7 +457,7 @@ export default function PlaceStone3DScreen() {
             setIsOffCenter(false);
             setStatusMessage('원하는 높이와 위치에서 손을 놓아 돌을 올려보세요');
           }}
-          collapsedShake={phase === 'COLLAPSING'}
+          collapsedShake={false}
           trajectory={currentTrajectory ?? state.lastSimulationTrajectory}
           phase={phase}
           droppedStone={renderedDroppedStone}
@@ -488,7 +479,7 @@ export default function PlaceStone3DScreen() {
         </Text>
       </View>
 
-      {/* Bottom Action Buttons: Choice UX when stone fell, or direct drop controls */}
+      {/* Bottom Action Buttons: Choice UX when stone settled on floor, or direct placement */}
       {phase === 'FALLEN_CHOICE' ? (
         <View style={styles.buttonRow}>
           <Pressable
@@ -518,17 +509,6 @@ export default function PlaceStone3DScreen() {
         </View>
       ) : (
         <View style={styles.buttonRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              isBusy && styles.disabledButton,
-              pressed && !isBusy && { opacity: 0.7 },
-            ]}
-            disabled={isBusy}
-            onPress={() => handleDrop(getAutoPlacementDropPose(0.45))}
-          >
-            <Text style={styles.secondaryText}>빗맞힘 테스트 (전복)</Text>
-          </Pressable>
           <Pressable
             style={({ pressed }) => [
               styles.primaryButton,
@@ -574,10 +554,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
   },
-  statusDanger: {
-    color: TossTheme.colors.danger,
-    fontWeight: '700',
-  },
   statusPeaceful: {
     color: '#34C759',
     fontWeight: '700',
@@ -598,21 +574,6 @@ const styles = StyleSheet.create({
   peacefulAlert: {
     ...TossTheme.typography.micro,
     color: '#34C759',
-    textAlign: 'center',
-    fontWeight: '700',
-  },
-  collapsedBox: {
-    backgroundColor: 'rgba(240, 68, 82, 0.12)',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: TossTheme.radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(240, 68, 82, 0.25)',
-    marginBottom: 8,
-  },
-  collapsedAlert: {
-    ...TossTheme.typography.micro,
-    color: TossTheme.colors.danger,
     textAlign: 'center',
     fontWeight: '700',
   },
@@ -687,92 +648,6 @@ const styles = StyleSheet.create({
   floatingRerollText: {
     ...TossTheme.typography.micro,
     color: TossTheme.colors.textPrimary,
-    fontWeight: '700',
-  },
-  placementControlPanel: {
-    width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  placementGuideRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    backgroundColor: '#1E2026',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#2F343F',
-  },
-  stabilityIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  stabilityDot: {
-    fontSize: 12,
-  },
-  stabilityText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#05D686',
-  },
-  stabilityTextWarning: {
-    color: '#FA5252',
-  },
-  coordText: {
-    fontSize: 11,
-    color: '#8B95A1',
-    fontWeight: '600',
-  },
-  nudgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-    marginBottom: 10,
-  },
-  nudgeButton: {
-    flex: 1,
-    backgroundColor: '#262930',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#353A45',
-  },
-  nudgeCenterButton: {
-    backgroundColor: 'rgba(49, 130, 246, 0.16)',
-    borderColor: '#3182F6',
-  },
-  nudgeButtonText: {
-    color: '#E5E8EB',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  nudgeCenterText: {
-    color: '#3182F6',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  dropActionButton: {
-    backgroundColor: '#3182F6',
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-    shadowColor: '#3182F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  dropActionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
     fontWeight: '700',
   },
   canvasCaption: {

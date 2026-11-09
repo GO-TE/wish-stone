@@ -502,7 +502,42 @@ test('F22-7.1: stone.tsx and place.tsx contain "🎲 다른 돌 찾아보기" To
     'place.tsx must preserve [🎯 즉시 안착하기]'
   );
   assert.ok(
-    placeSource.includes('빗맞힘 테스트 (전복)'),
+    !placeSource.includes('빗맞힘 테스트 (전복)'),
     'place.tsx must preserve [빗맞힘 테스트 (전복)]'
   );
+});
+
+
+test('v2.1 Refinement: Failure action/text removal, retry flow preservation, zero boxy stones, and random-only compact pebble UI', () => {
+  const stonePath = path.join(SRC_DIR, 'app/stack/stone.tsx');
+  const placePath = path.join(SRC_DIR, 'app/stack/place.tsx');
+  const canvasPath = path.join(SRC_DIR, 'presentation/components/StoneTowerCanvas.tsx');
+
+  const stoneSource = fs.readFileSync(stonePath, 'utf8');
+  const placeSource = fs.readFileSync(placePath, 'utf8');
+  const canvasSource = fs.readFileSync(canvasPath, 'utf8');
+
+  // 1. Failure action/texts removed while retry flow is preserved in place.tsx
+  assert.ok(!placeSource.includes('중심을 잃고 굴러떨어지는 중'), 'place.tsx must remove "중심을 잃고 굴러떨어지는 중"');
+  assert.ok(!placeSource.includes('균형을 잃고 돌탑이 무너졌습니다'), 'place.tsx must remove collapse danger text');
+  assert.ok(!placeSource.includes('collapsedBox'), 'place.tsx must remove collapsedBox danger banner');
+  assert.ok(!placeSource.includes('빗맞힘 테스트 (전복)'), 'place.tsx must remove failure test button');
+  assert.ok(placeSource.includes('FALLEN_CHOICE'), 'place.tsx must preserve FALLEN_CHOICE retry state');
+  assert.ok(placeSource.includes('handleRetryPlacement'), 'place.tsx must preserve handleRetryPlacement');
+  assert.ok(placeSource.includes('다시 올려보기'), 'place.tsx must preserve "다시 올려보기" button');
+
+  // 2. All boxy/rectangular stones deleted in StoneTowerCanvas.tsx & flatShading=false in stoneTowerSpec.ts
+  assert.ok(!canvasSource.includes('<boxGeometry'), 'StoneTowerCanvas.tsx must contain zero <boxGeometry>');
+  assert.ok(!canvasSource.includes('<dodecahedronGeometry'), 'StoneTowerCanvas.tsx must contain zero <dodecahedronGeometry>');
+  assert.ok(canvasSource.includes('createRiverPebbleGeometry'), 'StoneTowerCanvas.tsx must use createRiverPebbleGeometry');
+  assert.ok(canvasSource.includes('PEBBLE_VISUAL_SCALE_FACTOR'), 'StoneTowerCanvas.tsx must apply compact pebble visual scale');
+  for (const s of ALL_SHAPES) {
+    assert.equal(buildStoneGeometrySpec(s).flatShading, false, `Shape ${s} must have flatShading: false`);
+  }
+
+  // 3. Manual shape/color pickers removed and random-only compact pebble UI enforced in stone.tsx
+  assert.ok(!stoneSource.includes('>돌 모양<'), 'stone.tsx must remove manual shape picker section');
+  assert.ok(!stoneSource.includes('>돌 색상<'), 'stone.tsx must remove manual color picker section');
+  assert.ok(!stoneSource.includes('colorButton'), 'stone.tsx must remove manual color buttons');
+  assert.ok(stoneSource.includes('🎲 다른 돌 찾아보기'), 'stone.tsx must provide random reroll button');
 });

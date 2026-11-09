@@ -2,7 +2,7 @@
 
 > 최종 갱신: 2026-11-09
 
-## 1. 완료된 작업 (Sprint 1 ~ 11 All Complete ✅)
+## 1. 완료된 작업 (Sprint 1 ~ 12 All Complete ✅)
 
 - [x] **Sprint 1: 기반 아키텍처 및 멀티 에이전트 워크트리 구축**
   - Git Worktree 분리 및 `main` 베이스라인 보존
@@ -42,6 +42,10 @@
   - 임계 정지마찰각($\approx 26.6^\circ$) 초과 시 쿨롱 마찰 경사면 미끄러짐(Friction Slip) 궤적 통합
   - 각진 다면체 제거 및 구면 조화 기반 자연 강자갈(`pebbleGeometrySpec.ts`, 하단 평탄화 + Smooth Normals) 및 12종 천연 광물 팔레트 구축
   - 돌 선택(`/stack/stone`) 및 쌓기(`/stack/place`) 화면에 `[ 🎲 다른 돌 찾아보기 ]` 랜덤 리롤 UI 및 `StackStoneController.rerollStone()` 통합
+- [x] **Sprint 12: v2.1 돌쌓기 UX 정제 — 실패 액션 제거(재시도 유지), 네모난 돌 전면 삭제, 돌 크기 축소 및 랜덤 전용 뽑기 UI (`D-027`)**
+  - 쌓기(`/stack/place`)에서 실패 문구(`중심을 잃고 굴러떨어지는 중`), 붉은 붕괴 경고(`collapsedBox`), 전복 테스트 버튼을 제거하고 재시도 플로우(`FALLEN_CHOICE` → `↺ 다시 올려보기` / `⛰️ 이 자리에 그대로 두기`) 유지
+  - `StoneTowerCanvas.tsx` 내 모든 `<boxGeometry>` 및 `<dodecahedronGeometry>` 제거 후 전 형상에 `createRiverPebbleGeometry` 및 `flatShading: false` 일괄 적용
+  - 3D/2D 조약돌 시각 크기 축소(`PEBBLE_VISUAL_SCALE_FACTOR = 0.72` 및 컴팩트 `SHAPE_PROFILES`) 및 돌 선택(`/stack/stone`) 수동 모양/색상 선택 UI 삭제(랜덤 리롤 전용화)
 
 ---
 

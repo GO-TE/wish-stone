@@ -24,10 +24,10 @@ const STONE_SHAPES: readonly {
   desc: string;
 }[] = [
   { shape: 'round', label: '둥근 몽돌', desc: '모나지 않고 매끄러운 조약돌' },
-  { shape: 'flat', label: '납작한 강돌', desc: '돌탑의 든든한 받침돌' },
-  { shape: 'pebble', label: '작은 자갈돌', desc: '가볍고 귀여운 산돌' },
-  { shape: 'tall', label: '우뚝 선 선돌', desc: '곧게 뻗은 기원의 돌' },
-  { shape: 'boulder', label: '우직한 바위', desc: '무게감 있는 단단한 기초' },
+  { shape: 'flat', label: '납작한 강돌', desc: '돌탑의 든든한 받침 조약돌' },
+  { shape: 'pebble', label: '작은 자갈돌', desc: '가볍고 아담한 여울 조약돌' },
+  { shape: 'tall', label: '세워진 조약돌', desc: '차분하게 빚어진 기원의 몽돌' },
+  { shape: 'boulder', label: '묵직한 몽돌', desc: '무게감 있는 둥근 강변 조약돌' },
 ];
 
 const STONE_COLORS: readonly { color: string; name: string }[] =
@@ -45,53 +45,55 @@ interface StoneVisualProfile {
   borderBottomLeftRadius: number;
 }
 
+/**
+ * 아담하고 매끄러운 조약돌 비례 스펙 (v2.1 크기 축소 및 완전 곡면화)
+ */
 const SHAPE_PROFILES: Record<StoneShape, StoneVisualProfile> = {
   flat: {
-    width: 172,
-    height: 56,
-    borderTopLeftRadius: 48,
-    borderTopRightRadius: 38,
-    borderBottomRightRadius: 18,
-    borderBottomLeftRadius: 22,
+    width: 106,
+    height: 36,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 28,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 18,
   },
   round: {
-    width: 144,
-    height: 64,
-    borderTopLeftRadius: 46,
-    borderTopRightRadius: 44,
-    borderBottomRightRadius: 24,
-    borderBottomLeftRadius: 28,
+    width: 92,
+    height: 44,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 32,
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 22,
   },
   tall: {
-    width: 104,
-    height: 82,
-    borderTopLeftRadius: 48,
-    borderTopRightRadius: 44,
-    borderBottomRightRadius: 22,
-    borderBottomLeftRadius: 26,
-  },
-  pebble: {
-    width: 96,
-    height: 48,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 38,
+    width: 70,
+    height: 54,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 32,
     borderBottomRightRadius: 18,
     borderBottomLeftRadius: 20,
   },
+  pebble: {
+    width: 68,
+    height: 34,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 28,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
   boulder: {
-    width: 188,
-    height: 68,
-    borderTopLeftRadius: 54,
-    borderTopRightRadius: 44,
-    borderBottomRightRadius: 22,
-    borderBottomLeftRadius: 26,
+    width: 112,
+    height: 48,
+    borderTopLeftRadius: 38,
+    borderTopRightRadius: 34,
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 22,
   },
 };
 
 /**
  * SCR-05 돌 선택 화면 (`/stack/stone`)
- * Toss-Style Minimal Aesthetic Revamp
- * 근거: 화면 설계서.md 5장, DB-008
+ * v2.1: 수동 모양/색상 선택 UI를 제거하고 오직 자연스러운 랜덤 조약돌 뽑기(`🎲 다른 돌 찾아보기`)만 제공
  */
 export default function SelectStoneScreen() {
   const router = useRouter();
@@ -106,18 +108,13 @@ export default function SelectStoneScreen() {
     });
   }, [controller]);
 
-  const handleSelect = (shape: StoneShape, color: string) => {
-    controller.selectStone(shape, color);
-    setState({ ...controller.getState() });
-  };
-
   const handleReroll = () => {
     safeHaptic('grab');
     controller.rerollStone();
   };
 
   const selectedShape = state.selectedStone.shape;
-  const selectedColor = state.selectedStone.color || '#566070';
+  const selectedColor = state.selectedStone.color || '#4A5568';
   const profile = SHAPE_PROFILES[selectedShape] ?? SHAPE_PROFILES.round;
 
   const currentShapeMeta =
@@ -129,13 +126,13 @@ export default function SelectStoneScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>소원을 담을 돌 고르기</Text>
+        <Text style={styles.title}>소원을 담을 조약돌 만나기</Text>
         <Text style={styles.subtitle}>
-          정성을 담아 올릴 돌의 모양과 질감을 선택해 보세요
+          강가에서 우연히 마주친 자연 조약돌에 소원을 담아보세요
         </Text>
       </View>
 
-      {/* 3D Visual Pebble Preview Box */}
+      {/* Compact Pebble Random Encounter Card */}
       <View style={styles.previewCard}>
         <View style={styles.pebbleContainer}>
           <View
@@ -154,15 +151,23 @@ export default function SelectStoneScreen() {
           >
             <View style={styles.stoneSurfaceHighlight} />
           </View>
-          <View style={styles.groundShadow} />
+          <View
+            style={[
+              styles.groundShadow,
+              { width: Math.round(profile.width * 0.88) },
+            ]}
+          />
         </View>
 
         <Text style={styles.previewName}>{currentShapeMeta.label}</Text>
         <Text style={styles.previewDesc}>
           {currentShapeMeta.desc} · {currentColorMeta.name}
         </Text>
+        <Text style={styles.zenGuideText}>
+          모양과 빛깔은 자연의 우연으로 정해집니다
+        </Text>
 
-        {/* Floating Reroll Button (F21) */}
+        {/* Random Reroll Action Button (F21) */}
         <Pressable
           style={({ pressed }) => [
             styles.rerollButton,
@@ -174,64 +179,6 @@ export default function SelectStoneScreen() {
         >
           <Text style={styles.rerollButtonText}>🎲 다른 돌 찾아보기</Text>
         </Pressable>
-      </View>
-
-      {/* Options 1: Stone Shape */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>돌 모양</Text>
-        <View style={styles.shapeOptionRow}>
-          {STONE_SHAPES.map((item) => {
-            const active = selectedShape === item.shape;
-            return (
-              <Pressable
-                key={item.shape}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => handleSelect(item.shape, selectedColor)}
-              >
-                <Text
-                  style={[styles.chipText, active && styles.chipTextActive]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Options 2: Stone Color / Material */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>돌 색상</Text>
-        <View style={styles.colorRow}>
-          {STONE_COLORS.map((item) => {
-            const active = selectedColor === item.color;
-            return (
-              <Pressable
-                key={item.color}
-                style={[
-                  styles.colorButton,
-                  active && styles.colorButtonActive,
-                ]}
-                onPress={() => handleSelect(selectedShape, item.color)}
-              >
-                <View
-                  style={[
-                    styles.colorCircle,
-                    { backgroundColor: item.color },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.colorName,
-                    active && styles.colorNameActive,
-                  ]}
-                >
-                  {item.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
       </View>
 
       {/* Primary Action Button */}
@@ -273,107 +220,79 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.textSecondary,
   },
   previewCard: {
+    flex: 1,
+    maxHeight: 360,
     backgroundColor: TossTheme.colors.card,
     borderRadius: TossTheme.radius.card,
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 12,
+    marginVertical: 16,
   },
   pebbleContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: 100,
+    height: 82,
+    marginBottom: 8,
   },
   realStoneVisual: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderTopWidth: 2.5,
-    borderTopColor: 'rgba(255, 255, 255, 0.4)',
-    borderBottomWidth: 3.5,
-    borderBottomColor: 'rgba(0, 0, 0, 0.45)',
-    borderLeftWidth: 1.5,
-    borderLeftColor: 'rgba(255, 255, 255, 0.15)',
-    borderRightWidth: 1.5,
-    borderRightColor: 'rgba(0, 0, 0, 0.25)',
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(255, 255, 255, 0.38)',
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(0, 0, 0, 0.42)',
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255, 255, 255, 0.14)',
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(0, 0, 0, 0.24)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.36,
+    shadowRadius: 8,
+    elevation: 6,
   },
   stoneSurfaceHighlight: {
     position: 'absolute',
     top: 4,
-    left: 8,
-    right: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    left: 10,
+    right: 10,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
   groundShadow: {
-    width: 160,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
     marginTop: 6,
   },
   previewName: {
     ...TossTheme.typography.cardTitle,
     color: TossTheme.colors.textPrimary,
-    marginTop: 12,
+    marginTop: 10,
   },
   previewDesc: {
     ...TossTheme.typography.micro,
     color: TossTheme.colors.textSecondary,
-    marginTop: 3,
+    marginTop: 4,
   },
-  section: {
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    ...TossTheme.typography.caption,
-    color: TossTheme.colors.textSecondary,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  shapeOptionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    backgroundColor: TossTheme.colors.card,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: TossTheme.radius.button,
-    borderWidth: 1,
-    borderColor: TossTheme.colors.border,
-  },
-  chipActive: {
-    backgroundColor: TossTheme.colors.textPrimary,
-    borderColor: TossTheme.colors.textPrimary,
-  },
-  chipText: {
-    ...TossTheme.typography.caption,
-    color: TossTheme.colors.textSecondary,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#000000',
-    fontWeight: '700',
+  zenGuideText: {
+    ...TossTheme.typography.micro,
+    color: TossTheme.colors.textTertiary,
+    marginTop: 6,
   },
   rerollButton: {
-    marginTop: 12,
+    marginTop: 22,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.16)',
     borderRadius: TossTheme.radius.button,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -385,41 +304,6 @@ const styles = StyleSheet.create({
   rerollButtonText: {
     ...TossTheme.typography.caption,
     color: TossTheme.colors.textPrimary,
-    fontWeight: '700',
-  },
-  colorRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'flex-start',
-  },
-  colorButton: {
-    alignItems: 'center',
-    padding: 6,
-    borderRadius: TossTheme.radius.md,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  colorButtonActive: {
-    borderColor: TossTheme.colors.primary,
-    backgroundColor: TossTheme.colors.primarySoft,
-  },
-  colorCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255, 255, 255, 0.3)',
-    borderBottomWidth: 2,
-    borderBottomColor: 'rgba(0, 0, 0, 0.3)',
-    marginBottom: 4,
-  },
-  colorName: {
-    ...TossTheme.typography.micro,
-    color: TossTheme.colors.textTertiary,
-  },
-  colorNameActive: {
-    color: TossTheme.colors.primary,
     fontWeight: '700',
   },
   nextButton: {
