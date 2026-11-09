@@ -191,7 +191,7 @@ export default function TowerExplorationScreen() {
       return Math.hypot(dx, dy, dz) <= 0.42;
     });
 
-    if (cluster.length >= 2) {
+    if (false && cluster.length >= 2) {
       setOverlappingCluster(cluster);
       setSelectedStone(null);
     } else {
@@ -622,6 +622,7 @@ const styles = StyleSheet.create({
     color: TossTheme.colors.textTertiary,
   },
   floatingHudContainer: {
+    display: 'none',
     position: 'absolute',
     bottom: 24,
     left: 16,

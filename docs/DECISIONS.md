@@ -155,3 +155,11 @@
   2. **우클릭 자유 카메라 이동**: `<OrbitControls>`에 `mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}` 및 `enablePan = true` 기본값을 적용하고 우클릭 컨텍스트 메뉴를 차단.
   3. **수직 전용 리프트**: `InteractiveDraggableStone3D`에서 전방 수렴(`radialDist`)을 `0`으로 제거하여 돌을 들어 올릴 때 앞으로 가지 않고 수직 위로만 올라가도록 변경.
   4. **동그란 자갈돌 단일화**: `ROUND_PEBBLE_VISUAL_SCALES` 및 `getRoundPebbleVisualScale`을 도입해 모든 돌을 아담하고 동그란 자갈돌 비례로 렌더링.
+
+
+## D-029: v2.3 3D(Three.js) 뷰포트 폐기 및 직관적인 2D 감성 자갈돌 돌탑으로 전면 전환 (2026-11-09)
+- **배경**: 3D 원근 투영과 물리 충돌 박스 간의 시점·좌표 괴리로 인해 사용성 피로도가 높아져, 3D를 폐기하고 직관적이고 감성적인 2D 돌탑 쌓기로 전면 전환하기로 결정함.
+- **결정**:
+  1. `StoneTowerCanvas.tsx`의 기본 `renderMode`를 `'2d'`로 전환하여 앱 전역(`/home`, `/tower`, `/stack/place`)에서 Three.js 3D 캔버스를 비활성화하고 2D 자연 자갈돌 적층 뷰포트를 기본 렌더링함.
+  2. `/stack/place`에서 마우스/터치로 2D 자갈돌을 좌우·상하로 직접 끌어 균형을 맞추고 놓을 수 있는 2D 인터랙티브 드래그 앤 드롭(`handle2DPointerDown`)과 수직 정렬 가이드를 구현함.
+  3. 테스트 및 사용 중 막힘이 없도록 기본 일일 쿼터를 `999`개로 확대하고, 백엔드 5개 제한 도달 시 자동으로 신규 게스트 세션을 발급받아 끊김 없이 돌을 쌓을 수 있도록 개선함.

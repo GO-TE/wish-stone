@@ -569,3 +569,23 @@ test('v2.2 Refinement: Zero floating stones (resolveGrounded3DNodes), right-clic
   assert.ok(canvasSource.includes('getRoundPebbleVisualScale'), 'StoneTowerCanvas must normalize all shapes to round pebbles');
   assert.ok(!stoneSource.includes('세워진 조약돌'), 'stone.tsx must not label any stone as elongated/standing ("세워진 조약돌")');
 });
+
+
+test('v2.3 Refinement: 2D Zen Pebble Cairn default mode, 2D interactive drag-and-drop, and 999 daily quota with auto guest rotation', () => {
+  const canvasPath = path.join(SRC_DIR, 'presentation/components/StoneTowerCanvas.tsx');
+  const placePath = path.join(SRC_DIR, 'app/stack/place.tsx');
+  const appContainerPath = path.join(SRC_DIR, 'infrastructure/di/AppContainer.ts');
+
+  const canvasSource = fs.readFileSync(canvasPath, 'utf8');
+  const placeSource = fs.readFileSync(placePath, 'utf8');
+  const appContainerSource = fs.readFileSync(appContainerPath, 'utf8');
+
+  // 1. 2D mode is the default in StoneTowerCanvas
+  assert.ok(canvasSource.includes("renderMode = '2d'"), 'StoneTowerCanvas must default to renderMode = 2d');
+  assert.ok(canvasSource.includes('handle2DPointerDown'), 'StoneTowerCanvas must support 2D interactive stone drag-and-drop');
+  assert.ok(canvasSource.includes('drag2DStageArea'), 'StoneTowerCanvas must render 2D draggable pebble stage area');
+
+  // 2. Shared AppContainer provides 999 daily quota and place.tsx auto-rotates guest token on DAILY_QUOTA_EXCEEDED
+  assert.ok(appContainerSource.includes('baseQuota: 999'), 'getSharedAppContainer must initialize with baseQuota: 999');
+  assert.ok(placeSource.includes('controller.grantRewardQuotaBonus(999)'), 'place.tsx must auto-refill quota if depleted');
+});
