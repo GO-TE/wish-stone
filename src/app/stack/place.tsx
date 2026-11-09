@@ -452,7 +452,7 @@ export default function PlaceStone3DScreen() {
         </View>
 
         {/* Floating Reroll Action Button (F21) */}
-        {false && !isBusy && (
+        {!isBusy && (
           <View style={styles.floatingRerollContainer}>
             <Pressable
               style={({ pressed }) => [
