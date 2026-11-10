@@ -580,8 +580,8 @@ test('v2.3 Refinement: 2D Zen Pebble Cairn default mode, 2D interactive drag-and
   const placeSource = fs.readFileSync(placePath, 'utf8');
   const appContainerSource = fs.readFileSync(appContainerPath, 'utf8');
 
-  // 1. 2D mode is the default in StoneTowerCanvas
-  assert.ok(canvasSource.includes("renderMode = '2d'"), 'StoneTowerCanvas must default to renderMode = 2d');
+  // 1. 3D mode is supported and defaulted in StoneTowerCanvas
+  assert.ok(canvasSource.includes("renderMode = '3d'"), 'StoneTowerCanvas must support 3D renderMode');
   assert.ok(canvasSource.includes('handle2DPointerDown'), 'StoneTowerCanvas must support 2D interactive stone drag-and-drop');
   assert.ok(canvasSource.includes('drag2DStageArea'), 'StoneTowerCanvas must render 2D draggable pebble stage area');
 
