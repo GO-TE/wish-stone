@@ -1266,7 +1266,7 @@ export function StoneTowerCanvas({
   droppedStone,
   onPlaybackComplete,
   onCollapseAnimationComplete,
-  renderMode = '2d',
+  renderMode = '3d',
   enableOrbitControls = false,
   cameraPreset,
   onCameraPresetChange,
@@ -1574,7 +1574,7 @@ export function StoneTowerCanvas({
       ]}
     >
       {/* 컨트롤 패널 (showControls = true 일 때만 표시) */}
-      {false && showControls && (
+      {showControls && (
         <View style={styles.controlsArea}>
           <View style={styles.styleSelector}>
             <Pressable

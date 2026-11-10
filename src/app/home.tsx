@@ -653,7 +653,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   towerHeaderActions: {
-    display: 'none',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

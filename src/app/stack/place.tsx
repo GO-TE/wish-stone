@@ -363,7 +363,6 @@ export default function PlaceStone3DScreen() {
         <Text
           style={[
             styles.status,
-            (phase === 'IDLE' || phase === 'PLACING') && { display: 'none' },
             phase === 'FALLEN_CHOICE' && styles.statusPeaceful,
             phase === 'SETTLED' && styles.statusSuccess,
           ]}
@@ -623,21 +622,18 @@ const styles = StyleSheet.create({
   },
   canvasContainer: {
     flex: 1,
-    minHeight: 380,
     backgroundColor: TossTheme.colors.card,
     borderRadius: TossTheme.radius.card,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     marginVertical: 6,
     borderWidth: 1,
     borderColor: TossTheme.colors.border,
     userSelect: 'none' as any,
   },
   cameraPresetRow: {
-    display: 'none',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -667,7 +663,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   floatingRerollContainer: {
-    display: 'none',
     position: 'absolute',
     top: 56,
     right: 14,
