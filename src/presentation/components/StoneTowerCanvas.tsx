@@ -341,7 +341,7 @@ function StoneMesh3D({
       createRiverPebbleGeometry({
         shape: 'round',
         scale: visualScale,
-        flattenedBase: true,
+        flattenedBase: false,
         seed: 42 + index * 17,
       }),
     [visualScale.x, visualScale.y, visualScale.z, index]
@@ -428,7 +428,7 @@ function DroppedStoneMesh3D({
       createRiverPebbleGeometry({
         shape: 'round',
         scale: visualScale,
-        flattenedBase: true,
+        flattenedBase: false,
         seed: 77,
       }),
     [visualScale.x, visualScale.y, visualScale.z]
@@ -482,7 +482,7 @@ function HoveringStonePreview3D({
       createRiverPebbleGeometry({
         shape: 'round',
         scale: visualScale,
-        flattenedBase: true,
+        flattenedBase: false,
         seed: 99,
       }),
     [visualScale.x, visualScale.y, visualScale.z]
@@ -642,7 +642,7 @@ export function InteractiveDraggableStone3D({
       createRiverPebbleGeometry({
         shape: 'round',
         scale: visualScale,
-        flattenedBase: true,
+        flattenedBase: false,
         seed: 108,
       }),
     [visualScale.x, visualScale.y, visualScale.z]
@@ -981,33 +981,24 @@ export function InteractiveDraggableStone3D({
         const beamHeight = Math.max(0.02, currentPos[1] - projectedLandingY);
         const beamCenterY = projectedLandingY + beamHeight * 0.5;
 
-        const landingAuraColor = !isOverTowerSupport
-          ? '#5C7CFA' // Peaceful soft blue for ground
-          : '#3182F6'; // Toss Blue for stone support
+        // Distance-based color changing UI removed per user request
+        const landingAuraColor = '#000000';
 
         return (
           <group>
             {/* Projected Landing Reticle Ring & Contact Shadow */}
             <group position={[currentPos[0], projectedLandingY, currentPos[2]]}>
               <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.20, 32]} />
-                <meshBasicMaterial color="#000000" transparent opacity={0.38} side={THREE.DoubleSide} />
-              </mesh>
-              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
-                <ringGeometry args={[0.12, 0.18, 32]} />
-                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.88} side={THREE.DoubleSide} />
-              </mesh>
-              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
-                <circleGeometry args={[0.035, 16]} />
-                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.92} side={THREE.DoubleSide} />
+                <circleGeometry args={[0.18, 32]} />
+                <meshBasicMaterial color="#000000" transparent opacity={0.32} side={THREE.DoubleSide} />
               </mesh>
             </group>
 
             {/* Vertical Laser Drop Guide Beam */}
-            {currentPos[1] > projectedLandingY + 0.04 && (
+            {false && (
               <mesh position={[currentPos[0], beamCenterY, currentPos[2]]}>
                 <cylinderGeometry args={[0.005, 0.005, beamHeight, 8]} />
-                <meshBasicMaterial color={landingAuraColor} transparent opacity={0.55} />
+                <meshBasicMaterial color={landingAuraColor} transparent opacity={0} />
               </mesh>
             )}
           </group>
@@ -1027,8 +1018,8 @@ export function InteractiveDraggableStone3D({
           color={stone.color}
           roughness={geo.roughness}
           metalness={geo.metalness}
-          emissive={auraColor}
-          emissiveIntensity={isDragging ? 0.65 : 0.35}
+          emissive="#000000"
+          emissiveIntensity={0}
           flatShading={geo.flatShading}
         />
       </mesh>

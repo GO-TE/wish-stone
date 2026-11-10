@@ -71,7 +71,7 @@ export function createRiverPebbleGeometry(
   const H_z = config.scale.z * 0.25;
 
   const seed = config.seed ?? 42;
-  const flattenedBase = config.flattenedBase ?? true;
+  const flattenedBase = config.flattenedBase ?? false;
 
   for (let k = 0; k < positions.length; k += 3) {
     let x = positions[k];
@@ -103,7 +103,7 @@ export function createRiverPebbleGeometry(
     x *= r;
     z *= r;
 
-    // 3. Base flattening for physical resting contact plane
+    // 3. Natural smooth continuous pebble curvature (no artificial flat shelf)
     if (flattenedBase && y < -0.4) {
       if (y < -0.75) {
         y = -0.88;
@@ -113,6 +113,7 @@ export function createRiverPebbleGeometry(
         y = (1 - s) * y + s * -0.88;
       }
     } else {
+      // Natural organic water-worn curve without flattened bottom shelf
       y *= r;
     }
 
