@@ -150,17 +150,33 @@ export default function PlaceStone3DScreen() {
    * 돌이 정원 바닥으로 내려앉았을 때의 처리:
    * 내려앉은 자리 그대로 안착시키거나 다시 올려볼 수 있는 선택 상태(FALLEN_CHOICE)로 진입 (D-022)
    */
-  const handleCollapseComplete = (finalPoseOverride?: Pose) => {
+  const handleCollapseComplete = async (finalPoseOverride?: Pose) => {
     if (collapseTimerRef.current) {
       clearTimeout(collapseTimerRef.current);
       collapseTimerRef.current = null;
     }
-    const poseToUse =
-      finalPoseOverride ?? fallenPose ?? new Pose({ x: 0.55, y: 0.05, z: 0 });
+    const poseToUse = finalPoseOverride ?? fallenPose ?? state.selectedStone.pose;
     setFallenPose(poseToUse);
     setRenderedDroppedStone(state.selectedStone.withPose(poseToUse));
-    setPhase('FALLEN_CHOICE');
-    setStatusMessage('🍃 돌이 정원 바닥에 내려앉았습니다. 다시 올려보거나 이 자리에 둘 수 있어요.');
+    
+    // Auto-save at exact dropped/fallen location as requested by user
+    try {
+      const container = getSharedAppContainer();
+      if (!container.http.getAccessToken()) {
+        await container.auth.signIn('guest');
+      }
+      if (!controller.getState().quota.canStack()) {
+        controller.grantRewardQuotaBonus(999);
+      }
+      await controller.confirmFallenPlacement(poseToUse);
+      safeHaptic('success');
+      setPhase('SETTLED');
+      setTimeout(() => {
+        router.replace('/home');
+      }, 1000);
+    } catch {
+      setPhase('FALLEN_CHOICE');
+    }
   };
 
   /**
@@ -266,11 +282,19 @@ export default function PlaceStone3DScreen() {
       if (res.status === 'retry') {
         setPhase('COLLAPSING');
         safeHaptic('grab');
-        setStatusMessage('🍃 돌이 정원 위로 사뿐히 내려앉는 중입니다...');
 
-        // Record the final resting pose where it landed on the ground
-        const finalPose =
-          res.dropResult?.pose ?? new Pose({ x: 0.55, y: 0.05, z: 0 });
+        // Preserve exact user-dropped X,Z coordinate rather than jumping to 0.55
+        const userDropX = Number(dropPose.position.x.toFixed(4));
+        const userDropZ = Number(dropPose.position.z.toFixed(4));
+        const stoneHalfExtY = StonePhysicsBodyFactory.getShapeConfig(state.selectedStone.shape).halfExtents.y;
+        const groundRestY = Number(stoneHalfExtY.toFixed(4));
+
+        const finalPose = new Pose({
+          x: userDropX,
+          y: Math.max(groundRestY, Number(res.dropResult?.pose.position.y ?? groundRestY)),
+          z: userDropZ,
+        }, res.dropResult?.pose.rotation);
+
         setFallenPose(finalPose);
 
         // Keep renderedDroppedStone mounted for trajectory playback!
