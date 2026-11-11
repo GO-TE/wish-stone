@@ -281,6 +281,10 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
 
     // 4. 드롭할 돌의 동적 바디 생성 및 persistent world 추가
     const droppedStoneWithPose = stone.withPose(from);
+    const candidateStones = [...this.staticStones, droppedStoneWithPose];
+    const hierarchicalStability =
+      StabilityEvaluator.evaluateHierarchicalStackStability(candidateStones);
+
     this.dropBody = StonePhysicsBodyFactory.createStoneBody(
       droppedStoneWithPose,
       {
@@ -300,10 +304,15 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
 
     for (let step = 0; step < maxSteps; step++) {
       // (a) 동적 전복 및 연쇄 붕괴 트리거 검사:
+      const shouldCollapse =
+        !hierarchicalStability.isStable ||
+        analyticalStability.marginDistance < -0.02 ||
+        droppedBelowTower;
+
       if (
         !towerCollapseTriggered &&
         topStone &&
-        (analyticalStability.marginDistance < -0.02 || droppedBelowTower)
+        shouldCollapse
       ) {
         const distXZ = Math.hypot(
           dropBody.position.x - topStone.pose.position.x,
@@ -498,14 +507,20 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
         dropBody.velocity.length() < 0.1;
 
       settled = landedInsideBase;
-    } else if (droppedBelowTower || droppedFarOff || towerCollapseTriggered) {
-      // 탑 높이 미만에서 드롭되었거나, 지지 반경을 벗어났거나, 붕괴가 발동한 경우 실패
+    } else if (
+      droppedBelowTower ||
+      droppedFarOff ||
+      towerCollapseTriggered ||
+      !hierarchicalStability.isStable
+    ) {
+      // 탑 높이 미만에서 드롭되었거나, 지지 반경을 벗어났거나, 붕괴가 발동했거나, 계층 안정성이 깨진 경우 실패
       settled = false;
     } else {
       // 돌탑 위에 안착했는지 여부 검증:
       // (1) 최종 바닥 좌표가 탑 상단 표면 위인가 (y - dropConfig.halfExtents.y >= topSurfaceY - 0.02)
       // (2) 최종 무게중심이 베이스 돌의 지지 다각형 내에 유지되는가
       // (3) 지면으로 굴러떨어지지 않았는가 (y > 지면 반높이 + 마진)
+      // (4) 최종 배치 후 전체 타워 계층 안정성(Multi-tier CoM)이 유지되는가
       const dropBottomFinal = finalDropPose.position.y - dropConfig.halfExtents.y;
       const isAboveTopSurface = dropBottomFinal >= topSurfaceY - 0.02;
       const finalEval = supportPolygon
@@ -518,7 +533,18 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
 
       const notOnGround = finalDropPose.position.y > dropConfig.halfExtents.y + 0.08;
 
-      settled = isAboveTopSurface && notOnGround && finalEval.marginDistance >= -0.03;
+      const finalCandidateStones = [
+        ...this.staticStones,
+        stone.withPose(finalDropPose),
+      ];
+      const finalHierEval =
+        StabilityEvaluator.evaluateHierarchicalStackStability(finalCandidateStones);
+
+      settled =
+        isAboveTopSurface &&
+        notOnGround &&
+        finalEval.marginDistance >= -0.03 &&
+        finalHierEval.isStable;
     }
 
     let adjustedDropPose = finalDropPose;
@@ -536,17 +562,17 @@ export class SimpleTowerPhysicsWorld implements PhysicsWorld {
         );
       }
     } else if (!settled) {
-      const groundRestY = dropConfig.halfExtents.y;
-      if (adjustedDropPose.position.y < groundRestY) {
-        adjustedDropPose = new Pose(
-          {
-            x: adjustedDropPose.position.x,
-            y: Number(groundRestY.toFixed(4)),
-            z: adjustedDropPose.position.z,
-          },
-          adjustedDropPose.rotation
-        );
-      }
+      const groundRestY = Number(dropConfig.halfExtents.y.toFixed(4));
+      // Strict Anti-Banana Ground Fall Invariant:
+      // 미안착/전복/붕괴된 돌은 공중에 매달리지 않고 엄격히 지면(y = groundRestY)에 안착
+      adjustedDropPose = new Pose(
+        {
+          x: adjustedDropPose.position.x,
+          y: groundRestY,
+          z: adjustedDropPose.position.z,
+        },
+        adjustedDropPose.rotation
+      );
     }
 
     const collapsed = !settled;

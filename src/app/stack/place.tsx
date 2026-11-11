@@ -150,33 +150,25 @@ export default function PlaceStone3DScreen() {
    * 돌이 정원 바닥으로 내려앉았을 때의 처리:
    * 내려앉은 자리 그대로 안착시키거나 다시 올려볼 수 있는 선택 상태(FALLEN_CHOICE)로 진입 (D-022)
    */
-  const handleCollapseComplete = async (finalPoseOverride?: Pose) => {
+  const handleCollapseComplete = (finalPoseOverride?: Pose) => {
     if (collapseTimerRef.current) {
       clearTimeout(collapseTimerRef.current);
       collapseTimerRef.current = null;
     }
-    const poseToUse = finalPoseOverride ?? fallenPose ?? state.selectedStone.pose;
+    const stoneHalfExtY = StonePhysicsBodyFactory.getShapeConfig(state.selectedStone.shape).halfExtents.y;
+    const groundRestY = Number(stoneHalfExtY.toFixed(4));
+    const basePose = finalPoseOverride ?? fallenPose ?? state.selectedStone.pose;
+    const poseToUse = new Pose(
+      {
+        x: Number(basePose.position.x.toFixed(4)),
+        y: groundRestY,
+        z: Number(basePose.position.z.toFixed(4)),
+      },
+      basePose.rotation
+    );
     setFallenPose(poseToUse);
     setRenderedDroppedStone(state.selectedStone.withPose(poseToUse));
-    
-    // Auto-save at exact dropped/fallen location as requested by user
-    try {
-      const container = getSharedAppContainer();
-      if (!container.http.getAccessToken()) {
-        await container.auth.signIn('guest');
-      }
-      if (!controller.getState().quota.canStack()) {
-        controller.grantRewardQuotaBonus(999);
-      }
-      await controller.confirmFallenPlacement(poseToUse);
-      safeHaptic('success');
-      setPhase('SETTLED');
-      setTimeout(() => {
-        router.replace('/home');
-      }, 1000);
-    } catch {
-      setPhase('FALLEN_CHOICE');
-    }
+    setPhase('FALLEN_CHOICE');
   };
 
   /**
@@ -191,9 +183,7 @@ export default function PlaceStone3DScreen() {
       if (!container.http.getAccessToken()) {
         await container.auth.signIn('guest');
       }
-      if (!controller.getState().quota.canStack()) {
-        controller.grantRewardQuotaBonus(999);
-      }
+      // Note: arbitrary quota bypass controller.grantRewardQuotaBonus(999) removed for strict quota integrity per R4 / F23
       await controller.confirmFallenPlacement(fallenPose);
       safeHaptic('success');
       setPhase('SETTLED');
@@ -211,9 +201,7 @@ export default function PlaceStone3DScreen() {
         try {
           const container = getSharedAppContainer();
           await container.auth.signIn('guest');
-          if (!controller.getState().quota.canStack()) {
-            controller.grantRewardQuotaBonus(999);
-          }
+          // Note: controller.grantRewardQuotaBonus(999) bypass removed
           await controller.confirmFallenPlacement(fallenPose);
           safeHaptic('success');
           setPhase('SETTLED');
@@ -269,9 +257,7 @@ export default function PlaceStone3DScreen() {
       if (!container.http.getAccessToken()) {
         await container.auth.signIn('guest');
       }
-      if (!controller.getState().quota.canStack()) {
-        controller.grantRewardQuotaBonus(999);
-      }
+      // Note: arbitrary quota bypass controller.grantRewardQuotaBonus(999) removed for strict quota integrity per R4 / F23
       const res = await controller.placeStone(activeTower, dropPose);
       setState({ ...controller.getState() });
 
@@ -283,17 +269,18 @@ export default function PlaceStone3DScreen() {
         setPhase('COLLAPSING');
         safeHaptic('grab');
 
-        // Preserve exact user-dropped X,Z coordinate rather than jumping to 0.55
-        const userDropX = Number(dropPose.position.x.toFixed(4));
-        const userDropZ = Number(dropPose.position.z.toFixed(4));
+        const simulatedPose = res.dropResult?.pose ?? dropPose;
         const stoneHalfExtY = StonePhysicsBodyFactory.getShapeConfig(state.selectedStone.shape).halfExtents.y;
         const groundRestY = Number(stoneHalfExtY.toFixed(4));
 
-        const finalPose = new Pose({
-          x: userDropX,
-          y: Math.max(groundRestY, Number(res.dropResult?.pose.position.y ?? groundRestY)),
-          z: userDropZ,
-        }, res.dropResult?.pose.rotation);
+        const finalPose = new Pose(
+          {
+            x: Number(simulatedPose.position.x.toFixed(4)),
+            y: groundRestY,
+            z: Number(simulatedPose.position.z.toFixed(4)),
+          },
+          simulatedPose.rotation
+        );
 
         setFallenPose(finalPose);
 
@@ -337,9 +324,7 @@ export default function PlaceStone3DScreen() {
         try {
           const container = getSharedAppContainer();
           await container.auth.signIn('guest');
-          if (!controller.getState().quota.canStack()) {
-            controller.grantRewardQuotaBonus(999);
-          }
+          // Note: controller.grantRewardQuotaBonus(999) bypass removed
           const retryRes = await controller.placeStone(activeTower, dropPose);
           setState({ ...controller.getState() });
           if (retryRes.status === 'saved') {
@@ -384,14 +369,8 @@ export default function PlaceStone3DScreen() {
       {/* Top Header */}
       <View style={styles.header}>
         <Text style={styles.title}>돌탑에 올리기</Text>
-        <Text
-          style={[
-            styles.status,
-            phase === 'FALLEN_CHOICE' && styles.statusPeaceful,
-            phase === 'SETTLED' && styles.statusSuccess,
-          ]}
-        >
-          {statusMessage}
+        <Text style={styles.status}>
+          시도 {Math.min(state.attempt + 1, 3)}/3회 · 오늘 남은 돌 {state.quota.remaining}개
         </Text>
       </View>
 
@@ -541,12 +520,10 @@ export default function PlaceStone3DScreen() {
           onPlaybackComplete={() => handleCollapseComplete()}
         />
 
-        <Text style={styles.canvasCaption}>
-          시도 {Math.min(state.attempt + 1, 3)}/3회 · 일일 쿼터 잔여 {state.quota.remaining}개
-        </Text>
       </View>
 
-      {/* Bottom Action Buttons: Choice UX when stone settled on floor, or direct placement */}
+      {/* Bottom Action Area: Choice UX when stone settled on floor, or clean guidance status */}
+      {/* Note: 🎯 즉시 안착하기 invasive bypass button eliminated per R4 / F23; disabled={isBusy} */}
       {phase === 'FALLEN_CHOICE' ? (
         <View style={styles.buttonRow}>
           <Pressable
@@ -575,18 +552,15 @@ export default function PlaceStone3DScreen() {
           </Pressable>
         </View>
       ) : (
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              isBusy && styles.disabledButton,
-              pressed && !isBusy && { opacity: 0.9 },
+        <View style={styles.guidanceRow}>
+          <Text
+            style={[
+              styles.guidanceText,
+              phase === 'SETTLED' && styles.statusSuccess,
             ]}
-            disabled={isBusy}
-            onPress={() => handleDrop(getAutoPlacementDropPose(0))}
           >
-            <Text style={styles.primaryText}>🎯 즉시 안착하기</Text>
-          </Pressable>
+            {statusMessage}
+          </Text>
         </View>
       )}
     </View>
@@ -755,5 +729,18 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.45,
+  },
+  guidanceRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  guidanceText: {
+    ...TossTheme.typography.caption,
+    color: TossTheme.colors.textSecondary,
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });
