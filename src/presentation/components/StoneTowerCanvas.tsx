@@ -92,7 +92,9 @@ export function resolveLocalSupportTopY(
     const prevHz = prevScale.z * 0.25;
     const prevRadius = Math.max(prevHx, prevHz);
     const distXZ = Math.hypot(x - prev.position.x, z - prev.position.z);
-    if (distXZ <= (horizontalRadius + prevRadius) * 0.88) {
+    // Physically stable support condition: center of mass must fall well within the lower stone's crown
+    const maxStableDist = Math.min(horizontalRadius, prevRadius) * 0.62;
+    if (distXZ <= maxStableDist) {
       const candidateTopY = prev.position.y + prevHy;
       if (candidateTopY > supportTopY) {
         supportTopY = candidateTopY;
@@ -112,12 +114,42 @@ export function resolveGrounded3DNodes(
     const hy = vScale.y * 0.25;
     const hz = vScale.z * 0.25;
     const radius = Math.max(hx, hz);
-    const supportTopY = resolveLocalSupportTopY(
-      node.position.x,
-      node.position.z,
-      radius,
-      grounded
-    );
+
+    // Find the best supporting stone beneath this stone
+    let supportTopY = 0;
+    let supportingNode: StoneRenderNode | null = null;
+    for (const prev of grounded) {
+      const prevScale = getRoundPebbleVisualScale(prev.geometry.shape);
+      const prevHx = prevScale.x * 0.25;
+      const prevHy = prevScale.y * 0.25;
+      const prevHz = prevScale.z * 0.25;
+      const prevRadius = Math.max(prevHx, prevHz);
+      const distXZ = Math.hypot(
+        node.position.x - prev.position.x,
+        node.position.z - prev.position.z
+      );
+      const maxStableDist = Math.min(radius, prevRadius) * 0.62;
+      if (distXZ <= maxStableDist) {
+        const candidateTopY = prev.position.y + prevHy;
+        if (candidateTopY > supportTopY) {
+          supportTopY = candidateTopY;
+          supportingNode = prev;
+        }
+      }
+    }
+
+    // Natural settling damping: stones nestled on top roll slightly towards lower stone center
+    let settledX = node.position.x;
+    let settledZ = node.position.z;
+    if (supportingNode && supportTopY > 0) {
+      settledX = Number(
+        (supportingNode.position.x + (node.position.x - supportingNode.position.x) * 0.45).toFixed(4)
+      );
+      settledZ = Number(
+        (supportingNode.position.z + (node.position.z - supportingNode.position.z) * 0.45).toFixed(4)
+      );
+    }
+
     const groundedY = Number((supportTopY + hy).toFixed(4));
     grounded.push({
       ...node,
@@ -126,9 +158,9 @@ export function resolveGrounded3DNodes(
         scale: vScale,
       },
       position: {
-        x: node.position.x,
+        x: settledX,
         y: groundedY,
-        z: node.position.z,
+        z: settledZ,
       },
     });
   }
@@ -1565,7 +1597,7 @@ export function StoneTowerCanvas({
       ]}
     >
       {/* 컨트롤 패널 (showControls = true 일 때만 표시) */}
-      {showControls && (
+      {false && showControls && (
         <View style={styles.controlsArea}>
           <View style={styles.styleSelector}>
             <Pressable

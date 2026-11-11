@@ -292,6 +292,7 @@ export default function HomeScreen({ initialUnreadCheerCount }: HomeScreenProps 
               enableOrbitControls={true}
               cameraPreset="front"
               towerTopY={state.tower?.topY() ?? 1.0}
+              showControls={false}
               onSelectStone={(stoneId: WishId) => {
                 // SCR-04 in-place modal: previously onSelectStone={() => router.push('/tower')} setSelectedStone(found);
                 const found = state.tower?.stones.find((s) => s.id === stoneId) ?? null;
@@ -653,6 +654,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   towerHeaderActions: {
+    display: 'none',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -827,6 +829,7 @@ const styles = StyleSheet.create({
     backgroundColor: TossTheme.colors.primaryHover,
   },
   stackMainButtonIcon: {
+    display: 'none',
     fontSize: 18,
     marginRight: 8,
   },

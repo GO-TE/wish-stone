@@ -123,9 +123,9 @@ export class StackStoneUseCase {
         }
       }
       fallbackAutoPose = new Pose({
-        x: bestStone.pose.position.x,
+        x: Number((bestStone.pose.position.x * 0.5).toFixed(4)),
         y: Number((bestStone.pose.position.y + 0.25).toFixed(4)),
-        z: bestStone.pose.position.z,
+        z: Number((bestStone.pose.position.z * 0.5).toFixed(4)),
       });
     }
     const finalPose = dropResult.settled
