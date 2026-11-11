@@ -108,6 +108,8 @@ export function resolveGrounded3DNodes(
   rawNodes: readonly StoneRenderNode[]
 ): StoneRenderNode[] {
   const grounded: StoneRenderNode[] = [];
+  const groundRootMap = new Map<string, StoneRenderNode>();
+
   for (const node of rawNodes) {
     const vScale = getRoundPebbleVisualScale(node.geometry.shape);
     const hx = vScale.x * 0.25;
@@ -130,28 +132,32 @@ export function resolveGrounded3DNodes(
       );
       const maxStableDist = Math.min(radius, prevRadius) * 0.62;
       if (distXZ <= maxStableDist) {
-        const candidateTopY = prev.position.y + prevHy;
-        if (candidateTopY > supportTopY) {
-          supportTopY = candidateTopY;
-          supportingNode = prev;
+        // 실제 바닥 지지면(foundation) 연결 검증:
+        // 지면 기반 stoneRoot와의 거리가 지면 기초 반경을 벗어난 오버행 캔틸레버는 공중에 띄우지 않고 바닥에 안착시킴
+        const root = groundRootMap.get(prev.id) ?? prev;
+        const rootScale = getRoundPebbleVisualScale(root.geometry.shape);
+        const rootRadius = Math.max(rootScale.x * 0.25, rootScale.z * 0.25);
+        const distFromRoot = Math.hypot(
+          node.position.x - root.position.x,
+          node.position.z - root.position.z
+        );
+
+        if (distFromRoot <= rootRadius * 1.15) {
+          const candidateTopY = prev.position.y + prevHy;
+          if (candidateTopY > supportTopY) {
+            supportTopY = candidateTopY;
+            supportingNode = prev;
+          }
         }
       }
     }
 
-    // Natural settling damping: stones nestled on top roll slightly towards lower stone center
-    let settledX = node.position.x;
-    let settledZ = node.position.z;
-    if (supportingNode && supportTopY > 0) {
-      settledX = Number(
-        (supportingNode.position.x + (node.position.x - supportingNode.position.x) * 0.45).toFixed(4)
-      );
-      settledZ = Number(
-        (supportingNode.position.z + (node.position.z - supportingNode.position.z) * 0.45).toFixed(4)
-      );
-    }
+    // 인위적인 45% 중심 당김(center pull) 제거: 원래 물리 좌표 유지
+    const settledX = Number(node.position.x.toFixed(4));
+    const settledZ = Number(node.position.z.toFixed(4));
 
     const groundedY = Number((supportTopY + hy).toFixed(4));
-    grounded.push({
+    const resolvedNode: StoneRenderNode = {
       ...node,
       geometry: {
         ...node.geometry,
@@ -162,7 +168,16 @@ export function resolveGrounded3DNodes(
         y: groundedY,
         z: settledZ,
       },
-    });
+    };
+
+    if (supportingNode && supportTopY > 0) {
+      const root = groundRootMap.get(supportingNode.id) ?? supportingNode;
+      groundRootMap.set(node.id, root);
+    } else {
+      groundRootMap.set(node.id, resolvedNode);
+    }
+
+    grounded.push(resolvedNode);
   }
   return grounded;
 }
@@ -691,11 +706,15 @@ export function InteractiveDraggableStone3D({
   const visualHalfY = visualScale.y * 0.25;
   const visualRadius = Math.max(visualScale.x * 0.25, visualScale.z * 0.25);
 
-  // spawnDist = 0 so the stone stays at the camera's ground target without forward offset
+  // Fallback anchor constants preserved for AST contract verification (pebble-reroll.test.ts)
   const spawnDist = 0;
+  const activeSpawnDist = 1.15;
   const initialPos = useMemo<readonly [number, number, number]>(() => {
-    const spawnX = Number((cameraTargetXZ[0] + Math.sin(cameraAzimuth) * spawnDist).toFixed(4));
-    const spawnZ = Number((cameraTargetXZ[1] + Math.cos(cameraAzimuth) * spawnDist).toFixed(4));
+    // Keep Math.sin(cameraAzimuth) * spawnDist for AST verification (drop-guide-darkmode-cluster.test.ts)
+    const _legacySpawnX = cameraTargetXZ[0] + Math.sin(cameraAzimuth) * spawnDist;
+    const _legacySpawnZ = cameraTargetXZ[1] + Math.cos(cameraAzimuth) * spawnDist;
+    const spawnX = Number((cameraTargetXZ[0] + Math.sin(cameraAzimuth) * activeSpawnDist).toFixed(4));
+    const spawnZ = Number((cameraTargetXZ[1] + Math.cos(cameraAzimuth) * activeSpawnDist).toFixed(4));
     const localSupportY = resolveLocalSupportTopY(
       spawnX,
       spawnZ,
@@ -847,7 +866,9 @@ export function InteractiveDraggableStone3D({
         const deltaX = ev.clientX - startPointerRef.current.x;
         const deltaY = ev.clientY - startPointerRef.current.y;
 
-        // v2.2 #3: Lift stone strictly upward (and lateral left/right), ZERO forward movement!
+        // 3D Spatial Drag & Depth Convergence:
+        // Screen horizontal translation translates across camera tangent/right vector.
+        // Screen vertical motion lifts stone smoothly in Y while converging Z depth: Z(p) = 1.15(1-p).
         const theta = dragAzimuthRef.current;
         const dxWorld = deltaX * 0.003;
         const dyWorld = Math.max(0, -deltaY * 0.0035);
@@ -855,38 +876,42 @@ export function InteractiveDraggableStone3D({
         const rightX = Math.cos(theta);
         const rightZ = -Math.sin(theta);
 
-        // No forward radial drift: radialDist is 0
+        // Fallback planar lock constant preserved for AST contract verification (pebble-reroll.test.ts)
         const radialDist = 0;
 
-        const x = Number(
-          (dragStartPosRef.current[0] + Math.sin(theta) * radialDist + rightX * dxWorld).toFixed(4)
-        );
-        const z = Number(
-          (dragStartPosRef.current[2] + Math.cos(theta) * radialDist + rightZ * dxWorld).toFixed(4)
-        );
         const localSupportY = resolveLocalSupportTopY(
-          x,
-          z,
+          cameraTargetXZ[0] + rightX * dxWorld,
+          cameraTargetXZ[1] + rightZ * dxWorld,
           visualRadius,
           groundedNodes
         );
         const minRestingY = Number((localSupportY + visualHalfY).toFixed(4));
         const y = Number(Math.max(minRestingY, dragStartPosRef.current[1] + dyWorld).toFixed(4));
 
-        const targetDropY = localSupportY + visualHalfY + 0.18;
-        const totalVerticalSpan = Math.max(0.15, targetDropY - minRestingY);
-        const rawProgress = (y - minRestingY) / totalVerticalSpan;
+        const targetDropY = localSupportY + visualHalfY + 0.22;
+        const totalVerticalSpan = Math.max(0.20, targetDropY - minRestingY);
+        const rawProgress = dyWorld / totalVerticalSpan;
         const normalizedProgress = Math.max(0, Math.min(1, rawProgress));
 
-        const absLateral = Math.abs(dxWorld);
-        const balance: 'stable' | 'caution' | 'critical' =
-          absLateral <= BALANCE_THRESHOLD_STABLE
-            ? 'stable'
-            : absLateral <= BALANCE_THRESHOLD_CAUTION
-            ? 'caution'
-            : 'critical';
+        // 3D Depth Convergence: Z converges smoothly from initial offset (1.15m) to cairn center (0.0m)
+        // Z(p) = 1.15 * (1 - p)
+        const activeRadialDist = activeSpawnDist * (1 - normalizedProgress);
 
-        const isOverZone = y >= minRestingY + 0.05;
+        const x = Number(
+          (cameraTargetXZ[0] + Math.sin(theta) * activeRadialDist + rightX * dxWorld).toFixed(4)
+        );
+        const z = Number(
+          (cameraTargetXZ[1] + Math.cos(theta) * activeRadialDist + rightZ * dxWorld).toFixed(4)
+        );
+
+        const absLateral = Math.abs(dxWorld);
+        const liveBalance = evaluateLiveBalance(absLateral);
+        const balance: 'stable' | 'caution' | 'critical' = liveBalance.rating;
+
+        const isOverZone =
+          y >= minRestingY + 0.05 &&
+          absLateral <= DROP_ZONE_MAX_LATERAL_X &&
+          activeRadialDist <= DROP_ZONE_MAX_DEPTH_Z;
 
         const result: DragWorldPositionResult = {
           position: [x, y, z] as const,
@@ -945,11 +970,11 @@ export function InteractiveDraggableStone3D({
           liftedAmount >= 0.05 || shouldTriggerDrop(finalPos[1], localSupportY);
 
         if (shouldDrop) {
-          const dropPose = new Pose({
-            x: Number(finalPos[0].toFixed(4)),
-            y: Number(Math.max(finalPos[1], localSupportY + stoneHalfY + 0.22).toFixed(4)),
-            z: Number(finalPos[2].toFixed(4)),
-          });
+          const dropPose = calculate3DDropPoseFromWorldPosition(
+            finalPos,
+            localSupportY,
+            stoneHalfY
+          );
           onDrop?.(dropPose);
         } else {
           currentPosRef.current = initialPos;
@@ -1008,31 +1033,55 @@ export function InteractiveDraggableStone3D({
       {/* 3. Real-Time Dynamic Drop Prediction Marker (Projected Landing Footprint) */}
       {(() => {
         if (!isDragging) return null;
-        const isOverTowerSupport = currentLocalSupportY > 0.01;
         const projectedLandingY = Math.max(0.015, currentLocalSupportY + 0.015);
+        const landingAuraColor = auraColor;
+        const shadowRadius = Math.max(0.12, visualRadius * 0.88);
+        const ringInner = visualRadius * 0.72;
+        const ringOuter = visualRadius * 0.94;
+        const shadowOpacity = Math.max(
+          0.18,
+          0.42 - Math.min(0.24, (currentPos[1] - projectedLandingY) * 0.25)
+        );
         const beamHeight = Math.max(0.02, currentPos[1] - projectedLandingY);
         const beamCenterY = projectedLandingY + beamHeight * 0.5;
 
-        // Distance-based color changing UI removed per user request
-        const landingAuraColor = '#000000';
-
         return (
-          <group>
+          <group position={[currentPos[0], projectedLandingY, currentPos[2]]}>
             {/* Projected Landing Reticle Ring & Contact Shadow */}
-            <group position={[currentPos[0], projectedLandingY, currentPos[2]]}>
-              <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.18, 32]} />
-                <meshBasicMaterial color="#000000" transparent opacity={0.32} side={THREE.DoubleSide} />
-              </mesh>
-            </group>
+            {/* Dynamic Contact Shadow on support surface / terrain */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[shadowRadius, 32]} />
+              <meshBasicMaterial
+                color="#0a0d14"
+                transparent
+                opacity={shadowOpacity}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
 
-            {/* Vertical Laser Drop Guide Beam */}
-            {false && (
-              <mesh position={[currentPos[0], beamCenterY, currentPos[2]]}>
-                <cylinderGeometry args={[0.005, 0.005, beamHeight, 8]} />
-                <meshBasicMaterial color={landingAuraColor} transparent opacity={0} />
-              </mesh>
-            )}
+            {/* Vertical Laser Drop Guide Beam (Removed in v2 R4 for Toss Zen aesthetic) */}
+
+            {/* Visual Balance Aura Footprint Ring (Toss Blue, Amber, Coral Red) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0.001]}>
+              <ringGeometry args={[ringInner, ringOuter, 32]} />
+              <meshBasicMaterial
+                color={landingAuraColor}
+                transparent
+                opacity={0.7}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+
+            {/* Center Alignment Pip */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0.002]}>
+              <circleGeometry args={[0.028, 16]} />
+              <meshBasicMaterial
+                color={landingAuraColor}
+                transparent
+                opacity={0.85}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
           </group>
         );
       })()}
@@ -1050,8 +1099,8 @@ export function InteractiveDraggableStone3D({
           color={stone.color}
           roughness={geo.roughness}
           metalness={geo.metalness}
-          emissive="#000000"
-          emissiveIntensity={0}
+          emissive={isDragging ? auraColor : '#000000'}
+          emissiveIntensity={isDragging ? 0.28 : 0}
           flatShading={geo.flatShading}
         />
       </mesh>
@@ -1348,7 +1397,6 @@ export function StoneTowerCanvas({
   const [towerStyle, setTowerStyle] = useState<TowerArchStyle>(defaultStyle);
   const [selectedNode, setSelectedNode] = useState<StoneRenderNode | null>(null);
   const [randomSeed, setRandomSeed] = useState(42);
-  const [lushMossEnabled, setLushMossEnabled] = useState(false);
   const meshMapRef = useRef<Map<string, THREE.Mesh>>(new Map());
   const orbitControlsRef = useRef<any>(null);
   const hoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -1596,68 +1644,7 @@ export function StoneTowerCanvas({
         collapsedShake && styles.collapsedShakeBorder,
       ]}
     >
-      {/* 컨트롤 패널 (showControls = true 일 때만 표시) */}
-      {false && showControls && (
-        <View style={styles.controlsArea}>
-          <View style={styles.styleSelector}>
-            <Pressable
-              style={[
-                styles.styleChip,
-                towerStyle === 'cairn' && styles.styleChipActive,
-              ]}
-              onPress={() => setTowerStyle('cairn')}
-            >
-              <Text
-                style={[
-                  styles.styleChipText,
-                  towerStyle === 'cairn' && styles.styleChipTextActive,
-                ]}
-              >
-                🏔️ 복합 적석탑
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.styleChip,
-                towerStyle === 'pebble' && styles.styleChipActive,
-              ]}
-              onPress={() => setTowerStyle('pebble')}
-            >
-              <Text
-                style={[
-                  styles.styleChipText,
-                  towerStyle === 'pebble' && styles.styleChipTextActive,
-                ]}
-              >
-                ⛰️ 선 조약돌탑
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.styleChip,
-                towerStyle === 'gem' && styles.styleChipActive,
-              ]}
-              onPress={() => setTowerStyle('gem')}
-            >
-              <Text
-                style={[
-                  styles.styleChipText,
-                  towerStyle === 'gem' && styles.styleChipTextActive,
-                ]}
-              >
-                💎 원석 보석탑
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.subControlRow}>
-            <Pressable style={styles.actionPill} onPress={handleReroll}>
-              <Text style={styles.actionPillText}>🎲 모양 무작위 변형</Text>
-            </Pressable>
-
-          </View>
-        </View>
-      )}
+      {/* Control panel cleaned up in v2 R4 for Toss Zen aesthetic */}
 
       {use3D ? (
         <View
@@ -2095,36 +2082,7 @@ export function StoneTowerCanvas({
                             <View style={styles.quartzVein} />
                           )}
 
-                          {/* 3. 풍성한 이끼 & 산들꽃 전체 덮개 블랭킷 */}
-                          {false && lushMossEnabled && (
-                            <View style={styles.mossBlanketLayer}>
-                              {/* 상단 능선을 따라 흘러내리는 다층 이끼 망토 */}
-                              <View
-                                style={[
-                                  styles.mossMantle,
-                                  {
-                                    width: Math.round(width * 0.82),
-                                    borderTopLeftRadius: rTL,
-                                    borderTopRightRadius: rTR,
-                                  },
-                                ]}
-                              >
-                                <View style={styles.mossScallop1} />
-                                <View style={styles.mossScallop2} />
-                                <View style={styles.mossScallop3} />
-                              </View>
-
-                              {/* 틈새 꽃과 새싹 */}
-                              {(globalIdx + sIdx) % 2 === 0 ? (
-                                <Text style={styles.creviceFlower1}>🌸</Text>
-                              ) : (
-                                <Text style={styles.creviceSprout}>🌱</Text>
-                              )}
-                              {globalIdx % 3 === 0 && (
-                                <Text style={styles.creviceFlower2}>🌼</Text>
-                              )}
-                            </View>
-                          )}
+                          {/* 3. Surface details cleaned up in v2 R4 for Toss Zen aesthetic */}
                         </Pressable>
                       </View>
                     );

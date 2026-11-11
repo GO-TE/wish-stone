@@ -595,4 +595,115 @@ export class StabilityEvaluator {
 
     return this.evaluateStability(compositeCOM, polygon, totalMass);
   }
+
+  /**
+   * 다중 계층 돌탑의 계층별 복합 무게중심(Composite CoM) 및 기초 지지면 전복 안정성 계층 평가
+   * - 하단부터 상단까지 순서대로 정렬된 돌 배열 (S_0 ... S_{N-1})
+   * - 모든 인터페이스 k in {0, ..., N-2}에 대해 상위 서브어셈블리 U_k = {S_{k+1}, ..., S_{N-1}}의 복합 CoM 계산
+   * - 상위 복합 CoM이 S_k의 지지 다각형 P_k 내에 존재하는지 검증
+   * - 전체 타워 복합 CoM이 바닥 기저 돌 S_0의 기초 지지면 P_ground 내에 존재하는지 검증
+   * - 불안정 시 실패 인터페이스 인덱스 및 전복 토크(tau = sum (p_i - e_k) x m_i*g) 계산
+   */
+  public static evaluateHierarchicalStackStability(
+    stones: readonly Stone[]
+  ): {
+    isStable: boolean;
+    failingInterfaceIndex?: number;
+    overturningTorque?: Vec3;
+    compositeCOM: Vec3;
+  } {
+    if (stones.length === 0) {
+      return {
+        isStable: true,
+        compositeCOM: { x: 0, y: 0, z: 0 },
+      };
+    }
+
+    const stoneEntries = stones.map((s) => {
+      const cfg = StonePhysicsBodyFactory.getShapeConfig(s.shape);
+      return {
+        mass: cfg.mass,
+        position: s.pose.position,
+      };
+    });
+
+    const totalCOM = this.computeCompositeCOM(stoneEntries);
+    const totalMass = stoneEntries.reduce((sum, e) => sum + e.mass, 0);
+
+    // 지면 기저 돌(S_0)의 기초 지지면(P_ground) 검증
+    const groundPolygon = this.computeSupportPolygon(stones[0]);
+    const groundEval = this.evaluateStability(totalCOM, groundPolygon, totalMass);
+    const isGroundStable = groundEval.isStable && groundEval.zone !== 'topple';
+
+    if (stones.length === 1) {
+      if (!isGroundStable) {
+        return {
+          isStable: false,
+          failingInterfaceIndex: 0,
+          overturningTorque: groundEval.overturningTorque,
+          compositeCOM: totalCOM,
+        };
+      }
+      return {
+        isStable: true,
+        compositeCOM: totalCOM,
+      };
+    }
+
+    // 각 인터페이스 k in {0, ..., N-2}에 대한 안정성 평가
+    interface InterfaceResult {
+      k: number;
+      isStable: boolean;
+      eval: AdvancedStabilityEvaluation;
+    }
+    const interfaceResults: InterfaceResult[] = [];
+
+    for (let k = 0; k < stones.length - 1; k++) {
+      const upperEntries = stoneEntries.slice(k + 1);
+      const upperCOM = this.computeCompositeCOM(upperEntries);
+      const upperMass = upperEntries.reduce((sum, e) => sum + e.mass, 0);
+      const polygonK = this.computeSupportPolygon(stones[k]);
+      const evalK = this.evaluateStability(upperCOM, polygonK, upperMass);
+      const isKStable = evalK.isStable && evalK.zone !== 'topple';
+      interfaceResults.push({ k, isStable: isKStable, eval: evalK });
+    }
+
+    // 1. 최상단 인터페이스(k = N-2) 검사: 드롭된 최상단 돌 자체가 바로 아래 돌에 안착하지 못한 경우
+    const topInterface = interfaceResults[interfaceResults.length - 1];
+    if (!topInterface.isStable) {
+      return {
+        isStable: false,
+        failingInterfaceIndex: topInterface.k,
+        overturningTorque: topInterface.eval.overturningTorque,
+        compositeCOM: totalCOM,
+      };
+    }
+
+    // 2. 기초 지지면(P_ground) 전복 검사: 전체 타워 복합 무게중심이 기저면을 벗어난 경우
+    if (!isGroundStable) {
+      return {
+        isStable: false,
+        failingInterfaceIndex: 0,
+        overturningTorque: groundEval.overturningTorque,
+        compositeCOM: totalCOM,
+      };
+    }
+
+    // 3. 하위 중간 계층 인터페이스 검사 (캔틸레버 누적 불균형)
+    const failingInterface = interfaceResults.find((r) => !r.isStable);
+    if (failingInterface) {
+      return {
+        isStable: false,
+        failingInterfaceIndex: failingInterface.k,
+        overturningTorque: failingInterface.eval.overturningTorque,
+        compositeCOM: totalCOM,
+      };
+    }
+
+    return {
+      isStable: true,
+      compositeCOM: totalCOM,
+    };
+  }
 }
+
