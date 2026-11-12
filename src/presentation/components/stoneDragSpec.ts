@@ -91,7 +91,9 @@ export function computeDragWorldPosition(
     x = Number((initialPos[0] + forwardX * convergedOffset + rightX * dxWorld).toFixed(4));
     z = Number((initialPos[2] + forwardZ * convergedOffset + rightZ * dxWorld).toFixed(4));
   }
-  const y = Number(rawY.toFixed(4));
+  const maxHoverY = targetDropY + 0.15;
+  const clampedY = Math.max(initialPos[1], Math.min(maxHoverY, rawY));
+  const y = Number(clampedY.toFixed(4));
 
   // Live balance evaluation: horizontal cantilever displacement from center axis
   let balanceRating: 'stable' | 'caution' | 'critical' = 'stable';
@@ -272,8 +274,11 @@ export function calculate3DDropPoseFromWorldPosition(
     const isOverTower = Math.abs(x) <= DROP_ZONE_MAX_LATERAL_X && Math.abs(z) <= DROP_ZONE_MAX_DEPTH_Z;
     const effectiveSurfaceY = isOverTower ? topSurfaceY : 0;
     const minSafeY = Number((effectiveSurfaceY + halfH + safeClearance).toFixed(4));
+    const maxSafeY = Number((effectiveSurfaceY + halfH + 0.35).toFixed(4));
     if (y < minSafeY) {
       y = minSafeY;
+    } else if (y > maxSafeY) {
+      y = maxSafeY;
     }
   }
 

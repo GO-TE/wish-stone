@@ -374,15 +374,6 @@ export default function PlaceStone3DScreen() {
         </Text>
       </View>
 
-      {/* Peaceful Choice Banner when stone settled on garden floor */}
-      {phase === 'FALLEN_CHOICE' ? (
-        <View style={styles.peacefulBox}>
-          <Text style={styles.peacefulAlert}>
-            🍃 돌이 정원 바닥에 내려앉았습니다. 이것도 하나의 탑이 될 수 있어요.
-          </Text>
-        </View>
-      ) : null}
-
       {/* Main Drag & Drop Zone */}
       <View style={styles.canvasContainer}>
         {/* Camera Preset Selector HUD */}
