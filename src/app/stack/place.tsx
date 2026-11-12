@@ -368,102 +368,33 @@ export default function PlaceStone3DScreen() {
     <View style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>돌탑에 올리기</Text>
-        <Text style={styles.status}>
-          시도 {Math.min(state.attempt + 1, 3)}/3회 · 오늘 남은 돌 {state.quota.remaining}개
-        </Text>
+        <View>
+          <Text style={styles.title}>돌탑에 올리기</Text>
+          <Text style={styles.status}>
+            오늘 남은 돌 {state.quota.remaining}개
+          </Text>
+        </View>
+
+        {!isBusy && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.floatingRerollButton,
+              pressed && styles.floatingRerollButtonPressed,
+            ]}
+            onPress={() => {
+              safeHaptic('grab');
+              controller.rerollStone();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="다른 돌 찾아보기"
+          >
+            <Text style={styles.floatingRerollText}>🎲 다른 돌 찾아보기</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Main Drag & Drop Zone */}
       <View style={styles.canvasContainer}>
-        {/* Camera Preset Selector HUD */}
-        <View style={styles.cameraPresetRow}>
-          <Pressable
-            style={[
-              styles.cameraPresetChip,
-              cameraPreset === 'front' && styles.cameraPresetChipActive,
-            ]}
-            onPress={() => setCameraPreset('front')}
-          >
-            <Text
-              style={[
-                styles.cameraPresetText,
-                cameraPreset === 'front' && styles.cameraPresetTextActive,
-              ]}
-            >
-              정면
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.cameraPresetChip,
-              cameraPreset === 'side45' && styles.cameraPresetChipActive,
-            ]}
-            onPress={() => setCameraPreset('side45')}
-          >
-            <Text
-              style={[
-                styles.cameraPresetText,
-                cameraPreset === 'side45' && styles.cameraPresetTextActive,
-              ]}
-            >
-              측면 45°
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.cameraPresetChip,
-              cameraPreset === 'top' && styles.cameraPresetChipActive,
-            ]}
-            onPress={() => setCameraPreset('top')}
-          >
-            <Text
-              style={[
-                styles.cameraPresetText,
-                cameraPreset === 'top' && styles.cameraPresetTextActive,
-              ]}
-            >
-              탑뷰
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.cameraPresetChip,
-              cameraPreset === 'free' && styles.cameraPresetChipActive,
-            ]}
-            onPress={() => setCameraPreset('free')}
-          >
-            <Text
-              style={[
-                styles.cameraPresetText,
-                cameraPreset === 'free' && styles.cameraPresetTextActive,
-              ]}
-            >
-              360° 자유
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Floating Reroll Action Button (F21) */}
-        {!isBusy && (
-          <View style={styles.floatingRerollContainer}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.floatingRerollButton,
-                pressed && styles.floatingRerollButtonPressed,
-              ]}
-              onPress={() => {
-                safeHaptic('grab');
-                controller.rerollStone();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="다른 돌 찾아보기"
-            >
-              <Text style={styles.floatingRerollText}>🎲 다른 돌 찾아보기</Text>
-            </Pressable>
-          </View>
-        )}
-
         {/* Stone Tower Canvas with 3D Direct Drag Interaction */}
         <StoneTowerCanvas
           stones={activeTower.stones}
@@ -474,16 +405,12 @@ export default function PlaceStone3DScreen() {
             setPhase('PLACING');
             controller.startPlacing();
             safeHaptic('grab');
-            setStatusMessage('마음이 닿는 곳으로 돌을 자유롭게 옮겨보세요');
+            setStatusMessage('돌탑 꼭대기에 균형을 맞춰보세요');
           }}
           onStoneDragMove={(result: DragWorldPositionResult) => {
             setIsNearTarget(result.isOverDropZone);
             setIsOffCenter(result.balanceRating !== 'stable');
-            if (result.isOverDropZone) {
-              setStatusMessage('✨ 손을 놓으면 이 자리에 돌이 안착합니다');
-            } else {
-              setStatusMessage('원하는 위치로 돌을 자유롭게 끌어올려 보세요');
-            }
+            setStatusMessage('돌탑 꼭대기에 균형을 맞춰보세요');
           }}
           onStoneDrop={(dropPose) => {
             handleDrop(dropPose);
@@ -492,7 +419,7 @@ export default function PlaceStone3DScreen() {
             setPhase('IDLE');
             setIsNearTarget(false);
             setIsOffCenter(false);
-            setStatusMessage('원하는 높이와 위치에서 손을 놓아 돌을 올려보세요');
+            setStatusMessage('소원 돌을 돌탑 꼭대기에 올려보세요');
           }}
           collapsedShake={false}
           trajectory={currentTrajectory ?? state.lastSimulationTrajectory}
@@ -513,7 +440,7 @@ export default function PlaceStone3DScreen() {
 
       </View>
 
-      {/* Bottom Action Area: Choice UX when stone settled on floor, or clean guidance status */}
+      {/* Bottom Action Area: One-tap drop or Fallen Choice UX */}
       {/* Note: 🎯 즉시 안착하기 invasive bypass button eliminated per R4 / F23; disabled={isBusy} */}
       {phase === 'FALLEN_CHOICE' ? (
         <View style={styles.buttonRow}>
@@ -527,7 +454,7 @@ export default function PlaceStone3DScreen() {
             onPress={handleRetryPlacement}
           >
             <Text style={styles.secondaryText}>
-              ↺ 다시 올려보기 ({Math.min(state.attempt + 1, 3)}/3회)
+              ↺ 다시 올려보기
             </Text>
           </Pressable>
           <Pressable
@@ -543,15 +470,41 @@ export default function PlaceStone3DScreen() {
           </Pressable>
         </View>
       ) : (
-        <View style={styles.guidanceRow}>
-          <Text
-            style={[
-              styles.guidanceText,
-              phase === 'SETTLED' && styles.statusSuccess,
+        <View style={styles.actionContainer}>
+          <View style={styles.guidanceRow}>
+            <Text
+              style={[
+                styles.guidanceText,
+                phase === 'SETTLED' && styles.statusSuccess,
+              ]}
+            >
+              {statusMessage}
+            </Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              isBusy && styles.disabledButton,
+              pressed && !isBusy && { opacity: 0.88 },
             ]}
+            disabled={isBusy}
+            onPress={() => {
+              if (isBusy) return;
+              safeHaptic('grab');
+              const dropPose = getAutoPlacementDropPose(0);
+              handleDrop(dropPose);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="소원 돌 올리기"
           >
-            {statusMessage}
-          </Text>
+            <Text style={styles.primaryText}>
+              {phase === 'BALANCING' || phase === 'COLLAPSING'
+                ? '돌이 내려앉는 중...'
+                : phase === 'SETTLED'
+                ? '돌탑에 안착했습니다'
+                : '소원 돌 올리기'}
+            </Text>
+          </Pressable>
         </View>
       )}
     </View>
@@ -572,26 +525,30 @@ const styles = StyleSheet.create({
     userSelect: 'none' as any,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+    paddingHorizontal: 4,
   },
   title: {
     ...TossTheme.typography.title,
     color: TossTheme.colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 4,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   status: {
     ...TossTheme.typography.caption,
-    color: TossTheme.colors.primary,
-    textAlign: 'center',
-    fontWeight: '600',
+    color: TossTheme.colors.textTertiary,
+    fontWeight: '500',
   },
   statusPeaceful: {
     color: '#34C759',
     fontWeight: '700',
   },
   statusSuccess: {
-    color: '#2E7D32',
+    color: TossTheme.colors.primary,
     fontWeight: '700',
   },
   peacefulBox: {
@@ -611,15 +568,15 @@ const styles = StyleSheet.create({
   },
   canvasContainer: {
     flex: 1,
-    backgroundColor: TossTheme.colors.card,
+    minHeight: 440,
+    backgroundColor: '#0F121A',
     borderRadius: TossTheme.radius.card,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    overflow: 'hidden',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginVertical: 6,
+    justifyContent: 'center',
+    marginVertical: 8,
     borderWidth: 1,
-    borderColor: TossTheme.colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     userSelect: 'none' as any,
   },
   cameraPresetRow: {
@@ -652,26 +609,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   floatingRerollContainer: {
-    position: 'absolute',
-    top: 56,
-    right: 14,
     zIndex: 15,
   },
   floatingRerollButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
   },
   floatingRerollButtonPressed: {
     backgroundColor: 'rgba(255, 255, 255, 0.16)',
@@ -680,17 +629,25 @@ const styles = StyleSheet.create({
   floatingRerollText: {
     ...TossTheme.typography.micro,
     color: TossTheme.colors.textPrimary,
-    fontWeight: '700',
+    fontWeight: '600',
+    fontSize: 13,
   },
   canvasCaption: {
     ...TossTheme.typography.micro,
     color: TossTheme.colors.textTertiary,
     marginTop: 2,
   },
+  actionContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   buttonRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 8,
+    width: '100%',
   },
   secondaryButton: {
     flex: 1,
