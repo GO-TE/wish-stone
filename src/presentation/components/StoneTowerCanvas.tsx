@@ -801,12 +801,8 @@ export function InteractiveDraggableStone3D({
     }
   });
 
-  const auraColor =
-    balanceRating === 'stable'
-      ? '#3182F6'
-      : balanceRating === 'caution'
-      ? '#FFB300'
-      : '#FF6B6B';
+  // Calm Toss Blue aura (v2 R4: anxiety-inducing yellow/red color shifts removed per user request)
+  const auraColor = '#3182F6';
 
   const handlePointerDown = (e: any) => {
     if (!isDraggable || isDraggingRef.current) return;
@@ -886,8 +882,6 @@ export function InteractiveDraggableStone3D({
           groundedNodes
         );
         const minRestingY = Number((localSupportY + visualHalfY).toFixed(4));
-        const y = Number(Math.max(minRestingY, dragStartPosRef.current[1] + dyWorld).toFixed(4));
-
         const targetDropY = localSupportY + visualHalfY + 0.22;
         const totalVerticalSpan = Math.max(0.20, targetDropY - minRestingY);
         const rawProgress = dyWorld / totalVerticalSpan;
@@ -896,6 +890,16 @@ export function InteractiveDraggableStone3D({
         // 3D Depth Convergence: Z converges smoothly from initial offset (1.15m) to cairn center (0.0m)
         // Z(p) = 1.15 * (1 - p)
         const activeRadialDist = activeSpawnDist * (1 - normalizedProgress);
+
+        // Natural bounded elevation: stone smoothly ascends from spawn to target hover height above cairn.
+        // Firmly bounded with soft elastic overshoot (+0.06m max) so stone NEVER launches into the sky.
+        const startY = dragStartPosRef.current[1];
+        const hoverElevation = targetDropY;
+        const maxHoverElevation = hoverElevation + 0.06;
+        const elasticOvershoot = Math.min(0.06, Math.max(0, rawProgress - 1) * 0.03);
+        const interpolatedY = startY + normalizedProgress * (hoverElevation - startY) + elasticOvershoot;
+        const minClearanceY = Number((localSupportY * normalizedProgress + visualHalfY).toFixed(4));
+        const y = Number(Math.max(minClearanceY, Math.min(maxHoverElevation, interpolatedY)).toFixed(4));
 
         const x = Number(
           (cameraTargetXZ[0] + Math.sin(theta) * activeRadialDist + rightX * dxWorld).toFixed(4)
