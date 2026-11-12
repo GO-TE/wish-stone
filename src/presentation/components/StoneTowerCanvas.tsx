@@ -708,7 +708,7 @@ export function InteractiveDraggableStone3D({
 
   // Fallback anchor constants preserved for AST contract verification (pebble-reroll.test.ts)
   const spawnDist = 0;
-  const activeSpawnDist = 1.15;
+  const activeSpawnDist = 0;
   const initialPos = useMemo<readonly [number, number, number]>(() => {
     // Keep Math.sin(cameraAzimuth) * spawnDist for AST verification (drop-guide-darkmode-cluster.test.ts)
     const _legacySpawnX = cameraTargetXZ[0] + Math.sin(cameraAzimuth) * spawnDist;
@@ -721,7 +721,7 @@ export function InteractiveDraggableStone3D({
       visualRadius,
       groundedNodes
     );
-    const spawnY = Number((localSupportY + visualHalfY).toFixed(4));
+    const spawnY = Number((localSupportY + visualHalfY + 0.22).toFixed(4));
     return [spawnX, spawnY, spawnZ];
   }, [cameraAzimuth, cameraTargetXZ, visualRadius, visualHalfY, groundedNodes]);
 
@@ -1007,18 +1007,20 @@ export function InteractiveDraggableStone3D({
   return (
     <group>
       {/* 1. Spawn Pedestal Ring on Surface at initial position */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[initialPos[0], Math.max(0.01, initialPos[1] - visualHalfY + 0.005), initialPos[2]]}
-      >
-        <ringGeometry args={[0.14, 0.22, 32]} />
-        <meshBasicMaterial
-          color="#3182F6"
-          transparent
-          opacity={isDragging ? 0.2 : 0.55}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      {isDragging && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[initialPos[0], Math.max(0.01, initialPos[1] - visualHalfY + 0.005), initialPos[2]]}
+        >
+          <ringGeometry args={[0.14, 0.22, 32]} />
+          <meshBasicMaterial
+            color="#3182F6"
+            transparent
+            opacity={0.2}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
 
       {/* 2. Cairn Apex Sweet Spot Marker (Stationary Target Center on Top of Tower) */}
       {isDragging && (
@@ -1222,7 +1224,10 @@ function TowerCameraController({
     }
 
     const config = computePresetCameraView(preset, towerTopY);
-    targetPosRef.current.set(config.position[0], config.position[1], config.position[2]);
+    // Subtle auto-zoom back as tower height grows to ensure comfortable headspace and eliminate top clipping
+    const tallDistanceBonus = Math.max(0, ((towerTopY ?? 0) - 1.0) * 0.4);
+    const camZ = config.position[2] + tallDistanceBonus;
+    targetPosRef.current.set(config.position[0], config.position[1], camZ);
     targetLookAtRef.current.set(config.target[0], config.target[1], config.target[2]);
     isTransitioningRef.current = true;
   }, [preset, towerTopY]);
